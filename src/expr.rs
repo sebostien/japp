@@ -1,9 +1,17 @@
-use std::str::FromStr;
+#[derive(Debug, PartialEq)]
+pub struct Program {
+    pub exprs: Vec<Expr>,
+}
+
+impl std::fmt::Display for Program {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.exprs.iter().map(|e| writeln!(f, "{e}")).collect()
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum Expr {
     Ident(String),
-
     Neg(Box<Expr>),
     BinOp {
         lhs: Box<Expr>,
@@ -14,20 +22,18 @@ pub enum Expr {
     Let {
         name: String,
         rhs: Box<Expr>,
-        then: Box<Expr>,
     },
     Fn {
         name: String,
         args: Vec<String>,
         body: Box<Expr>,
-        then: Box<Expr>,
     },
 }
 
 impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expr::Ident(ident) => write!(f, "{ident}"),
+            Expr::Ident(ident) => ident.fmt(f),
             Expr::Neg(expr) => write!(f, "-{expr}"),
             Expr::BinOp { lhs, op, rhs } => write!(f, "({lhs} {op} {rhs})"),
             Expr::Call(name, ops) => {
@@ -37,22 +43,14 @@ impl std::fmt::Display for Expr {
                     .collect::<Vec<_>>()
                     .join(", ");
 
-                writeln!(f, "({name})({ops})")
+                write!(f, "({name})({ops})")
             }
-            Expr::Let { name, rhs, then } => {
-                writeln!(f, "let {name} = {rhs};")?;
-                write!(f, "{then}")
+            Expr::Let { name, rhs } => {
+                write!(f, "let {name} = {rhs};")
             }
-            Expr::Fn {
-                name,
-                args,
-                body,
-                then,
-            } => {
+            Expr::Fn { name, args, body } => {
                 let args = args.join(" ");
-
-                writeln!(f, "fn {name} {args} = {body};")?;
-                write!(f, "{then}")
+                write!(f, "fn {name} {args} = {body};")
             }
         }
     }

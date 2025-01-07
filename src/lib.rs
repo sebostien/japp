@@ -15,7 +15,7 @@ use chumsky::prelude::*;
 
 mod expr;
 
-use expr::{BinOp, Expr};
+use expr::{BinOp, Expr, Program};
 use text::TextParser;
 
 pub fn make_reports(
@@ -33,7 +33,7 @@ pub fn make_reports(
         .collect()
 }
 
-pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
+pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
     let ident = text::ident().padded();
 
     let expr = recursive(|expr| {
@@ -81,37 +81,33 @@ pub fn parser() -> impl Parser<char, Expr, Error = Simple<char>> {
         sum
     });
 
-    let decl = recursive(|decl| {
-        let var_decl = text::keyword("let")
-            .ignore_then(ident)
-            .then_ignore(just('='))
-            .then(expr.clone())
-            .then_ignore(just(';'))
-            .then(decl.clone())
-            .map(|((name, rhs), then)| Expr::Let {
-                name,
-                rhs: Box::new(rhs),
-                then: Box::new(then),
-            });
+    let var_decl = text::keyword("let")
+        .ignore_then(ident)
+        .then_ignore(just('='))
+        .then(expr.clone())
+        .then_ignore(just(';'))
+        .map(|(name, rhs)| Expr::Let {
+            name,
+            rhs: Box::new(rhs),
+        });
 
-        let fn_decl = text::keyword("fn")
-            .ignore_then(ident)
-            .then(ident.repeated())
-            .then_ignore(just('='))
-            .then(expr.clone())
-            .then_ignore(just(';'))
-            .then(decl)
-            .map(|(((name, args), body), then)| Expr::Fn {
-                name,
-                args,
-                body: Box::new(body),
-                then: Box::new(then),
-            });
+    let fn_decl = text::keyword("fn")
+        .ignore_then(ident)
+        .then(ident.repeated())
+        .then_ignore(just('='))
+        .then(expr.clone())
+        .then_ignore(just(';'))
+        .map(|((name, args), body)| Expr::Fn {
+            name,
+            args,
+            body: Box::new(body),
+        });
 
-        var_decl.or(fn_decl).or(expr).padded()
-    });
+    let decl = var_decl.or(fn_decl).or(expr).padded();
 
-    decl.then_ignore(end())
+    decl.repeated()
+        .map(|exprs| Program { exprs })
+        .then_ignore(end())
 }
 
 #[cfg(test)]
@@ -133,7 +129,11 @@ mod tests {
                         .unwrap();
                 }
                 let out = String::from_utf8(out).unwrap();
-                panic!("Expected successful parse on test {}:{}\n{out}", file!(), test_loc);
+                panic!(
+                    "Expected successful parse on test {}:{}\n{out}",
+                    file!(),
+                    test_loc
+                );
             }
         }
     }
@@ -149,25 +149,25 @@ mod tests {
 
     #[test]
     fn t_parse_op() {
-        test_parser!("--a", "--a");
-        test_parser!("\n-\n\n   a \n", "-a");
-        test_parser!("  -a  \n\n  ", "-a");
+        test_parser!("--a", "--a\n");
+        test_parser!("\n-\n\n   a \n", "-a\n");
+        test_parser!("  -a  \n\n  ", "-a\n");
     }
 
     #[test]
     fn t_parse_product() {
-        test_parser!("a * - bb", "(a * -bb)");
-        test_parser!("a / bb * - ccc", "((a / bb) * -ccc)");
+        test_parser!("a * - bb", "(a * -bb)\n");
+        test_parser!("a / bb * - ccc", "((a / bb) * -ccc)\n");
     }
 
     #[test]
     fn t_parse_sum() {
-        test_parser!("a / bb + - ccc", "((a / bb) + -ccc)");
+        test_parser!("a / bb + - ccc", "((a / bb) + -ccc)\n");
     }
 
     #[test]
     fn t_parse_let() {
-        test_parser!("let a = a; a + a", "let a = a;\n(a + a)");
+        test_parser!("let a = a; a + a", "let a = a;\n(a + a)\n");
     }
 
     #[test]
