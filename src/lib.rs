@@ -33,56 +33,73 @@ pub fn make_reports(
         .collect()
 }
 
-pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
-    let ident = text::ident().padded();
+fn ident() -> impl Parser<char, String, Error = Simple<char>> {
+    text::ident().padded()
+}
 
-    let expr = recursive(|expr| {
-        let call = ident
-            .clone()
-            .then(
-                expr.clone()
-                    .separated_by(just(','))
-                    .allow_trailing() // Foo is Rust-like, so allow trailing commas to appear in arg lists
-                    .delimited_by(just('('), just(')')),
-            )
-            .map(|(f, args)| Expr::Call(Box::new(Expr::Ident(f)), args));
+fn call<'a>(
+    expr: Recursive<'a, char, Expr, Simple<char>>,
+) -> impl Parser<char, Expr, Error = Simple<char>> + 'a {
+    ident()
+        .then(
+            expr.clone()
+                .separated_by(just(','))
+                .allow_trailing() // Foo is Rust-like, so allow trailing commas to appear in arg lists
+                .delimited_by(just('('), just(')')),
+        )
+        .map(|(f, args)| Expr::Call(Box::new(Expr::Ident(f)), args))
+}
 
-        let atom = expr
-            .delimited_by(just('('), just(')'))
-            .or(call)
-            .or(ident.map(Expr::Ident));
+fn atom<'a>(
+    expr: Recursive<'a, char, Expr, Simple<char>>,
+) -> impl Parser<char, Expr, Error = Simple<char>> + 'a {
+    expr.clone()
+        .delimited_by(just('('), just(')'))
+        .or(call(expr))
+        .or(ident().map(Expr::Ident))
+}
 
-        let op = |c| just(c).padded();
+fn unary<'a>(
+    expr: Recursive<'a, char, Expr, Simple<char>>,
+) -> impl Parser<char, Expr, Error = Simple<char>> + 'a {
+    let op = |c| just(c).padded();
 
-        let unary = op('-')
-            .clone()
-            .repeated()
-            .then(atom)
-            .foldr(|_op, rhs| Expr::Neg(Box::new(rhs)));
+    op('-')
+        .clone()
+        .repeated()
+        .then(atom(expr.clone()))
+        .foldr(|_op, rhs| Expr::Neg(Box::new(rhs)))
+}
 
-        let product = unary
-            .clone()
-            .then(one_of("*/").then(unary).repeated())
-            .foldl(|lhs, (op, rhs)| Expr::BinOp {
-                lhs: Box::new(lhs),
-                op: BinOp::try_from(op).unwrap(),
-                rhs: Box::new(rhs),
-            });
+fn product<'a>(
+    expr: Recursive<'a, char, Expr, Simple<char>>,
+) -> impl Parser<char, Expr, Error = Simple<char>> + 'a {
+    unary(expr.clone())
+        .then(one_of("*/").then(unary(expr.clone())).repeated())
+        .foldl(|lhs, (op, rhs)| Expr::BinOp {
+            lhs: Box::new(lhs),
+            op: BinOp::try_from(op).unwrap(),
+            rhs: Box::new(rhs),
+        })
+}
 
-        let sum = product
-            .clone()
-            .then(one_of("+-").then(product).repeated())
-            .foldl(|lhs, (op, rhs)| Expr::BinOp {
-                lhs: Box::new(lhs),
-                op: BinOp::try_from(op).unwrap(),
-                rhs: Box::new(rhs),
-            });
+fn sum<'a>(
+    expr: Recursive<'a, char, Expr, Simple<char>>,
+) -> impl Parser<char, Expr, Error = Simple<char>> + 'a {
+    product(expr.clone())
+        .then(one_of("+-").then(product(expr.clone())).repeated())
+        .foldl(|lhs, (op, rhs)| Expr::BinOp {
+            lhs: Box::new(lhs),
+            op: BinOp::try_from(op).unwrap(),
+            rhs: Box::new(rhs),
+        })
+}
 
-        sum
-    });
+fn expr() -> impl Parser<char, Expr, Error = Simple<char>> {
+    let expr = recursive(|expr| sum(expr));
 
     let var_decl = text::keyword("let")
-        .ignore_then(ident)
+        .ignore_then(ident())
         .then_ignore(just('='))
         .then(expr.clone())
         .then_ignore(just(';'))
@@ -92,8 +109,8 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
         });
 
     let fn_decl = text::keyword("fn")
-        .ignore_then(ident)
-        .then(ident.repeated())
+        .ignore_then(ident())
+        .then(ident().repeated())
         .then_ignore(just('='))
         .then(expr.clone())
         .then_ignore(just(';'))
@@ -103,9 +120,12 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
             body: Box::new(body),
         });
 
-    let decl = var_decl.or(fn_decl).or(expr).padded();
+    var_decl.or(fn_decl).or(expr).padded()
+}
 
-    decl.repeated()
+pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
+    expr()
+        .repeated()
         .map(|exprs| Program { exprs })
         .then_ignore(end())
 }
