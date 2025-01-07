@@ -48,7 +48,7 @@ fn call<'a>(
         .then(
             expr.clone()
                 .separated_by(just(','))
-                .allow_trailing() // Foo is Rust-like, so allow trailing commas to appear in arg lists
+                .allow_trailing()
                 .delimited_by(just('('), just(')')),
         )
         .map(|(f, args)| Expr::Call(Box::new(Expr::Ident(f)), args))
@@ -119,13 +119,17 @@ fn decl() -> impl Parser<char, Decl, Error = Simple<char>> {
         .then_ignore(just(';'))
         .map(|((ident, args), body)| Decl::Fn { ident, args, body });
 
-    var_decl.or(fn_decl).or(expr().map(Decl::Expr)).padded()
+    var_decl
+        .or(fn_decl)
+        .or(expr().then_ignore(just(";")).map(Decl::Expr))
+        .padded()
 }
 
 pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
     decl()
         .repeated()
-        .map(|exprs| Program { exprs })
+        .then(expr().padded().or_not())
+        .map(|(exprs, last)| Program { exprs, last })
         .then_ignore(end())
 }
 
@@ -138,7 +142,12 @@ mod tests {
 
         match parser().parse(source) {
             Ok(actual) => {
-                assert_eq!(actual.to_string(), expected);
+                assert_eq!(
+                    actual.to_string(),
+                    expected,
+                    "Not the expected result from test {}:{test_loc}",
+                    file!()
+                );
             }
             Err(e) => {
                 let mut out = Vec::new();
@@ -149,9 +158,8 @@ mod tests {
                 }
                 let out = String::from_utf8(out).unwrap();
                 panic!(
-                    "Expected successful parse on test {}:{}\n{out}",
-                    file!(),
-                    test_loc
+                    "Expected successful parse on test {}:{test_loc}\n{out}",
+                    file!()
                 );
             }
         }
@@ -168,25 +176,29 @@ mod tests {
 
     #[test]
     fn t_parse_op() {
-        test_parser!("--a", "--a\n");
-        test_parser!("\n-\n\n   a \n", "-a\n");
-        test_parser!("  -a  \n\n  ", "-a\n");
+        test_parser!("--a", "--a");
+        test_parser!("\n-\n\n   a \n", "-a");
+        test_parser!("  -a  \n\n  ", "-a");
     }
 
     #[test]
     fn t_parse_product() {
-        test_parser!("a * - bb", "(a * -bb)\n");
-        test_parser!("a / bb * - ccc", "((a / bb) * -ccc)\n");
+        test_parser!("a * - bb", "(a * -bb)");
+        test_parser!("a / bb * - ccc", "((a / bb) * -ccc)");
     }
 
     #[test]
     fn t_parse_sum() {
-        test_parser!("a / bb + - ccc", "((a / bb) + -ccc)\n");
+        test_parser!("a / bb + - ccc", "((a / bb) + -ccc)");
+        test_parser!(
+            "a / bb + - ccc * a + b - -(b * c);",
+            "((((a / bb) + (-ccc * a)) + b) - -(b * c));"
+        );
     }
 
     #[test]
     fn t_parse_let() {
-        test_parser!("let a = a; a + a", "let a = a;\n(a + a)\n");
+        test_parser!("let a = a; a + a", "let a = a;\n(a + a)");
     }
 
     #[test]
@@ -206,7 +218,6 @@ mod tests {
                 "let b = (a + b);",
                 "fn add x y = (x + y);",
                 "(add)((a * b), b)",
-                "",
             ]
             .join("\n"),
         );

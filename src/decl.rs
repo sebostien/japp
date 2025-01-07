@@ -17,7 +17,7 @@ pub enum Decl {
 impl std::fmt::Display for Decl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Expr(e) => e.fmt(f),
+            Self::Expr(e) => write!(f, "{e};"),
             Self::Let { ident, rhs } => {
                 write!(f, "let {ident} = {rhs};")
             }

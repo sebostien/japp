@@ -24,8 +24,8 @@ fn main() -> Result<(), ErrorCode> {
 
     match parser().parse(source) {
         Ok(source) => {
-            println!("{source:?}");
-            println!("'{source}'");
+            // println!("{source:?}");
+            // println!("{source}");
             Ok(())
         }
         Err(e) => {

@@ -1,6 +1,0 @@
-let hello = one;
-let world = two + hello;
-
-fn add x y = x + y;
-
-print(add(z)(z) + z)
