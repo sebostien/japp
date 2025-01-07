@@ -13,9 +13,13 @@ use std::ops::Range;
 use ariadne::{Label, Report, ReportKind};
 use chumsky::prelude::*;
 
+mod decl;
 mod expr;
+mod program;
 
-use expr::{BinOp, Expr, Program};
+use decl::Decl;
+use expr::{BinOp, Expr};
+use program::Program;
 use text::TextParser;
 
 pub fn make_reports(
@@ -96,35 +100,30 @@ fn sum<'a>(
 }
 
 fn expr() -> impl Parser<char, Expr, Error = Simple<char>> {
-    let expr = recursive(|expr| sum(expr));
+    recursive(|expr| sum(expr))
+}
 
+fn decl() -> impl Parser<char, Decl, Error = Simple<char>> {
     let var_decl = text::keyword("let")
         .ignore_then(ident())
         .then_ignore(just('='))
-        .then(expr.clone())
+        .then(expr())
         .then_ignore(just(';'))
-        .map(|(name, rhs)| Expr::Let {
-            name,
-            rhs: Box::new(rhs),
-        });
+        .map(|(ident, rhs)| Decl::Let { ident, rhs });
 
     let fn_decl = text::keyword("fn")
         .ignore_then(ident())
         .then(ident().repeated())
         .then_ignore(just('='))
-        .then(expr.clone())
+        .then(expr())
         .then_ignore(just(';'))
-        .map(|((name, args), body)| Expr::Fn {
-            name,
-            args,
-            body: Box::new(body),
-        });
+        .map(|((ident, args), body)| Decl::Fn { ident, args, body });
 
-    var_decl.or(fn_decl).or(expr).padded()
+    var_decl.or(fn_decl).or(expr().map(Decl::Expr)).padded()
 }
 
 pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
-    expr()
+    decl()
         .repeated()
         .map(|exprs| Program { exprs })
         .then_ignore(end())
