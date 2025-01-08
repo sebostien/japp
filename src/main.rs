@@ -24,12 +24,12 @@ fn main() -> Result<(), ErrorCode> {
 
     match parser().parse(source) {
         Ok(source) => {
-            // println!("{source:?}");
-            // println!("{source}");
+            println!("{source:#?}\n");
+            println!("{source}");
             Ok(())
         }
         Err(e) => {
-            for report in japp::make_reports(file_name, e) {
+            for report in japp::make_reports(file_name, &e) {
                 if let Err(e) = report.print((file_name, ariadne::Source::from(source))) {
                     eprintln!("{e}");
                     return Err(ErrorCode::IoError);

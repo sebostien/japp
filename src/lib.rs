@@ -1,113 +1,103 @@
+use ariadne::{Label, Report, ReportKind};
+use chumsky::{error::SimpleReason, prelude::*};
 use std::ops::Range;
 
-///
-/// Program = Decl*
-///
-/// Decl    = Type | Struct | Func
-///
-/// Type    = "type" Ident = Ty
-///
-/// Struct  = "struct" Ident
-///
-/// Ty
-use ariadne::{Label, Report, ReportKind};
-use chumsky::prelude::*;
-
 mod decl;
-mod expr;
 mod program;
 
-use decl::Decl;
-use expr::{BinOp, Expr};
+use decl::{Assoc, Decl, Spanned};
 use program::Program;
 use text::TextParser;
 
-pub fn make_reports(
-    file_name: &str,
-    errors: Vec<Simple<char>>,
-) -> Vec<Report<(&str, Range<usize>)>> {
+pub fn make_reports<'f>(
+    file_name: &'f str,
+    errors: &[Simple<char>],
+) -> Vec<Report<'f, (&'f str, Range<usize>)>> {
     errors
         .iter()
         .map(|error| {
-            // eprintln!("{error:?}");
-            Report::build(ReportKind::Error, (file_name, error.span()))
-                .with_label(Label::new((file_name, error.span())).with_message(error.to_string()))
+            let mut report = Report::build(ReportKind::Error, (file_name, error.span()));
+
+            let message = match error.reason() {
+                SimpleReason::Unexpected => {
+                    report = report.with_message("Unexpected token");
+                    error.to_string()
+                }
+                SimpleReason::Unclosed { span, delimiter } => todo!(
+                    "Check if the following is a good message: {:?} {} ::: {:?} ::: {}",
+                    error,
+                    error,
+                    span,
+                    delimiter
+                ),
+                SimpleReason::Custom(e) => e.clone(),
+            };
+
+            report
+                .with_label(Label::new((file_name, error.span())).with_message(message))
                 .finish()
         })
         .collect()
 }
 
-fn ident() -> impl Parser<char, String, Error = Simple<char>> {
-    text::ident().padded()
+const DEFAULT_PREC: usize = 10;
+
+/// Any utf-8 (without whitespace) sequence not starting with an ascii digit.
+fn ident() -> impl Parser<char, Spanned<String>, Error = Simple<char>> {
+    filter(|&c: &char| c != ';')
+        .then(filter(|c: &char| !c.is_whitespace()).repeated())
+        .padded()
+        .map(|(c, mut cs)| {
+            cs.insert(0, c);
+            cs.iter().collect()
+        })
+        .try_map(|inner: String, span| {
+            if matches!(inner.as_str(), "=" | ";") {
+                Err(Simple::custom(span, format!("Invalid ident '{inner}'")))
+            } else {
+                Ok(Spanned { span, inner })
+            }
+        })
 }
 
-fn call<'a>(
-    expr: Recursive<'a, char, Expr, Simple<char>>,
-) -> impl Parser<char, Expr, Error = Simple<char>> + 'a {
-    ident()
-        .then(
-            expr.clone()
-                .separated_by(just(','))
-                .allow_trailing()
-                .delimited_by(just('('), just(')')),
-        )
-        .map(|(f, args)| Expr::Call(Box::new(Expr::Ident(f)), args))
-}
-
-fn atom<'a>(
-    expr: Recursive<'a, char, Expr, Simple<char>>,
-) -> impl Parser<char, Expr, Error = Simple<char>> + 'a {
-    expr.clone()
-        .delimited_by(just('('), just(')'))
-        .or(call(expr))
-        .or(ident().map(Expr::Ident))
-}
-
-fn unary<'a>(
-    expr: Recursive<'a, char, Expr, Simple<char>>,
-) -> impl Parser<char, Expr, Error = Simple<char>> + 'a {
-    let op = |c| just(c).padded();
-
-    op('-')
-        .clone()
+fn unparsed_expr() -> impl Parser<char, Spanned<String>, Error = Simple<char>> {
+    filter(|&c: &char| c != ';')
         .repeated()
-        .then(atom(expr.clone()))
-        .foldr(|_op, rhs| Expr::Neg(Box::new(rhs)))
-}
-
-fn product<'a>(
-    expr: Recursive<'a, char, Expr, Simple<char>>,
-) -> impl Parser<char, Expr, Error = Simple<char>> + 'a {
-    unary(expr.clone())
-        .then(one_of("*/").then(unary(expr.clone())).repeated())
-        .foldl(|lhs, (op, rhs)| Expr::BinOp {
-            lhs: Box::new(lhs),
-            op: BinOp::try_from(op).unwrap(),
-            rhs: Box::new(rhs),
+        .at_least(1)
+        .padded()
+        // TODO: Padded only trims before, we manually trim the end.
+        //       Find way to avoid this
+        .map_with_span(|cs, span| Spanned {
+            span,
+            inner: cs.into_iter().collect::<String>().trim().to_owned(),
         })
-}
-
-fn sum<'a>(
-    expr: Recursive<'a, char, Expr, Simple<char>>,
-) -> impl Parser<char, Expr, Error = Simple<char>> + 'a {
-    product(expr.clone())
-        .then(one_of("+-").then(product(expr.clone())).repeated())
-        .foldl(|lhs, (op, rhs)| Expr::BinOp {
-            lhs: Box::new(lhs),
-            op: BinOp::try_from(op).unwrap(),
-            rhs: Box::new(rhs),
-        })
-}
-
-fn expr() -> impl Parser<char, Expr, Error = Simple<char>> {
-    recursive(|expr| sum(expr))
 }
 
 fn decl() -> impl Parser<char, Decl, Error = Simple<char>> {
-    let var_decl = text::keyword("let")
+    let infix_decl = choice((
+        text::keyword("infixl").map(|_| Assoc::Left),
+        text::keyword("infixr").map(|_| Assoc::Right),
+        text::keyword("infix").map(|_| Assoc::None),
+    ))
+    .then(ident())
+    .then(chumsky::text::int(10).validate(|x: String, span, emit| {
+        if let Ok(n) = x.parse() {
+            n
+        } else {
+            emit(Simple::custom(
+                span,
+                format!("Max precedence is {}", usize::MAX),
+            ));
+            DEFAULT_PREC
+        }
+    }))
+    .then_ignore(just(';'))
+    .map(|((assoc, ident), prec)| Decl::Infix { ident, prec, assoc });
+
+    let let_decl = text::keyword("let")
         .ignore_then(ident())
         .then_ignore(just('='))
-        .then(expr())
+        .then(unparsed_expr())
         .then_ignore(just(';'))
         .map(|(ident, rhs)| Decl::Let { ident, rhs });
 
@@ -115,21 +105,17 @@ fn decl() -> impl Parser<char, Decl, Error = Simple<char>> {
         .ignore_then(ident())
         .then(ident().repeated())
         .then_ignore(just('='))
-        .then(expr())
+        .then(unparsed_expr())
         .then_ignore(just(';'))
         .map(|((ident, args), body)| Decl::Fn { ident, args, body });
 
-    var_decl
-        .or(fn_decl)
-        .or(expr().then_ignore(just(";")).map(Decl::Expr))
-        .padded()
+    infix_decl.or(let_decl).or(fn_decl).padded()
 }
 
 pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
     decl()
         .repeated()
-        .then(expr().padded().or_not())
-        .map(|(exprs, last)| Program { exprs, last })
+        .map(|exprs| Program { exprs })
         .then_ignore(end())
 }
 
@@ -137,7 +123,7 @@ pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
 mod tests {
     use super::*;
 
-    fn test_parser(test_loc: &str, source: &str, expected: &str) {
+    fn test_parser_ok(test_loc: &str, source: &str, expected: &str) {
         let file_name = "test";
 
         match parser().parse(source) {
@@ -145,81 +131,146 @@ mod tests {
                 assert_eq!(
                     actual.to_string(),
                     expected,
-                    "Not the expected result from test {}:{test_loc}",
-                    file!()
+                    "Not the expected result from test {test_loc}\nParsing:\n'''\n{source}\n'''\nActual (left) vs Expected (right)"
                 );
             }
             Err(e) => {
                 let mut out = Vec::new();
-                for report in make_reports(file_name, e) {
+                for report in make_reports(file_name, &e) {
                     report
                         .write((file_name, ariadne::Source::from(source)), &mut out)
                         .unwrap();
                 }
                 let out = String::from_utf8(out).unwrap();
-                panic!(
-                    "Expected successful parse on test {}:{test_loc}\n{out}",
-                    file!()
-                );
+                panic!("Expected successful parse on test {test_loc}\n{out}");
             }
         }
     }
 
-    macro_rules! test_parser {
+    macro_rules! test_parser_ok {
         ($source:expr,$expected:expr,) => {
-            test_parser!($source, $expected)
+            test_parser_ok!($source, $expected)
         };
         ($source:expr,$expected:expr) => {
-            test_parser(&format!("{}:{}", line!(), column!()), $source, $expected);
+            test_parser_ok(
+                &format!("{}:{}:{}", file!(), line!(), column!()),
+                $source,
+                $expected,
+            );
         };
-    }
-
-    #[test]
-    fn t_parse_op() {
-        test_parser!("--a", "--a");
-        test_parser!("\n-\n\n   a \n", "-a");
-        test_parser!("  -a  \n\n  ", "-a");
-    }
-
-    #[test]
-    fn t_parse_product() {
-        test_parser!("a * - bb", "(a * -bb)");
-        test_parser!("a / bb * - ccc", "((a / bb) * -ccc)");
-    }
-
-    #[test]
-    fn t_parse_sum() {
-        test_parser!("a / bb + - ccc", "((a / bb) + -ccc)");
-        test_parser!(
-            "a / bb + - ccc * a + b - -(b * c);",
-            "((((a / bb) + (-ccc * a)) + b) - -(b * c));"
-        );
     }
 
     #[test]
     fn t_parse_let() {
-        test_parser!("let a = a; a + a", "let a = a;\n(a + a)");
+        test_parser_ok!("let a = -   -a;", "let a = -   -a ;");
+        test_parser_ok!("\nlet \n c = \n -\n\n   a \n;", "let c = -\n\n   a ;");
+        test_parser_ok!("let z =  -a  \n\n; ", "let z = -a ;");
+        test_parser_ok!("let a23 = a + b ;", "let a23 = a + b ;");
+        test_parser_ok!(
+            "let add = 1+(2 + (3+((4)))) == (1 + 2 + 3 +4);",
+            "let add = 1+(2 + (3+((4)))) == (1 + 2 + 3 +4) ;"
+        );
+        test_parser_ok!(
+            "let abc = a + b * c /(2/d) ;",
+            "let abc = a + b * c /(2/d) ;"
+        );
+    }
+
+    #[test]
+    fn t_fn() {
+        test_parser_ok!("fn add x y = x + y; ", "fn add x y = x + y ;");
+    }
+
+    #[test]
+    fn t_partial_application() {
+        test_parser_ok!(
+            "fn add x y = x + y; let z = add(x)(y);",
+            "fn add x y = x + y ;\nlet z = add(x)(y) ;"
+        );
+    }
+
+    #[test]
+    fn t_infix() {
+        test_parser_ok!("infix asdkj23lka9* 10;", "infix asdkj23lka9* 10;");
+        test_parser_ok!("infixl jasdk 10;", "infixl jasdk 10;");
+        test_parser_ok!("infixr asld 10;", "infixr asld 10;");
+        test_parser_ok!("infixr >=> 0;", "infixr >=> 0;");
+    }
+
+    #[test]
+    fn t_idents() {
+        test_parser_ok!(
+            "fn . 8 -9123 == = <=> < + -;  ",
+            "fn . 8 -9123 == = <=> < + - ;"
+        );
     }
 
     #[test]
     fn t_parse_big() {
-        test_parser!(
+        test_parser_ok!(
             r#"
-                let a = a;
-                let b = a + b;
+                let a = a ;
+                let b = a + b ;
 
-                fn add x y = x + y;
+                fn add x y = x + y ;
 
-                add(a * b, b)
+                let zz = add(a * b, b) ;
 
             "#,
             &vec![
-                "let a = a;",
-                "let b = (a + b);",
-                "fn add x y = (x + y);",
-                "(add)((a * b), b)",
+                "let a = a ;",
+                "let b = a + b ;",
+                "fn add x y = x + y ;",
+                "let zz = add(a * b, b) ;",
             ]
             .join("\n"),
+        );
+    }
+
+    //////////////////////////////////////////////////
+    ///// Errors ////////////////////////////////////
+    ////////////////////////////////////////////////
+
+    fn test_parser_err(test_loc: &str, source: &str, reason: &str) {
+        match parser().parse(source) {
+            Ok(actual) => {
+                panic!(
+                    "Parser successfully parsed test {}:{test_loc}\nWith result:\n'''\n{actual}\n'''\nBut this should fail because: {reason}",
+                    file!()
+                );
+            }
+            Err(_) => {
+                // TODO: Validate msg
+            }
+        }
+    }
+
+    macro_rules! test_parser_err {
+        ($source:expr,$reason:expr,) => {
+            test_parser_err!($source, $reason)
+        };
+        ($source:expr,$reason:expr) => {
+            test_parser_err(
+                &format!("{}:{}:{}", file!(), line!(), column!()),
+                $source,
+                $reason,
+            );
+        };
+    }
+
+    #[test]
+    fn t_error_no_semi() {
+        test_parser_err!("let z = 2", "No semi at end of decl");
+        test_parser_err!("let z = 2; let b = 2", "No semi at end of decl");
+        test_parser_err!("fn z = 2; let b = 2", "No semi at end of decl");
+        test_parser_err!("let b = 2 ; fn z = 2 \n\n", "No semi at end of decl");
+    }
+
+    #[test]
+    fn t_error_prec_to_big() {
+        test_parser_err!(
+            "infixr a 1231293810293812903890128390183209813821039 ;",
+            "Precedence too big. Must fit in usize"
         );
     }
 }
