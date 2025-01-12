@@ -1,3 +1,5 @@
+use super::expr::EvalError;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Lit {
     Bool(bool),
@@ -31,13 +33,13 @@ impl<S: AsRef<str>> From<S> for Lit {
 }
 
 impl TryFrom<Lit> for isize {
-    type Error = ();
+    type Error = EvalError;
 
     fn try_from(value: Lit) -> Result<Self, Self::Error> {
         if let Lit::Num(n) = value {
             Ok(n)
         } else {
-            Err(())
+            Err(EvalError::ExpectedInt(value))
         }
     }
 }

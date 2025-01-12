@@ -12,9 +12,9 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    pub fn compile<S: AsRef<str>>(symbols: &[S]) -> Self {
+    pub fn compile<I: IntoIterator<Item = S>, S: AsRef<str>>(symbols: I) -> Self {
         let symbols = symbols
-            .iter()
+            .into_iter()
             .map(|symbol| {
                 symbol
                     .as_ref()

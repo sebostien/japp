@@ -1,4 +1,4 @@
-use super::Lit;
+use super::{Lit, Spanned};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expr {
@@ -11,32 +11,34 @@ pub enum Expr {
         ident: String,
         args: Vec<Expr>,
     },
-    Lit(Lit),
+    Lit(Spanned<Lit>),
 }
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum EvalError {
+    ExpectedInt(Lit),
+}
+
 impl Expr {
-    pub fn eval(self) -> Lit {
+    pub fn eval(self) -> Result<Lit, EvalError> {
         match self {
             Expr::Binary { lhs, op, rhs } => match op.as_str() {
-                "+" => Lit::Num(
-                    isize::try_from(lhs.eval()).unwrap() + isize::try_from(rhs.eval()).unwrap(),
-                ),
-                "-" => Lit::Num(
-                    isize::try_from(lhs.eval()).unwrap() - isize::try_from(rhs.eval()).unwrap(),
-                ),
-                "*" => Lit::Num(
-                    isize::try_from(lhs.eval()).unwrap() * isize::try_from(rhs.eval()).unwrap(),
-                ),
-                "/" => Lit::Num(
-                    isize::try_from(lhs.eval()).unwrap() / isize::try_from(rhs.eval()).unwrap(),
-                ),
-                "^" => Lit::Num(
-                    isize::try_from(lhs.eval())
-                        .unwrap()
-                        .pow(isize::try_from(rhs.eval()).unwrap() as u32),
-                ),
-                "==" => Lit::Bool(
-                    isize::try_from(lhs.eval()).unwrap() == rhs.eval().try_into().unwrap(),
-                ),
+                "+" => Ok(Lit::Num(
+                    isize::try_from(lhs.eval()?)? + isize::try_from(rhs.eval()?)?,
+                )),
+                "-" => Ok(Lit::Num(
+                    isize::try_from(lhs.eval()?)? - isize::try_from(rhs.eval()?)?,
+                )),
+                "*" => Ok(Lit::Num(
+                    isize::try_from(lhs.eval()?)? * isize::try_from(rhs.eval()?)?,
+                )),
+                "/" => Ok(Lit::Num(
+                    isize::try_from(lhs.eval()?)? / isize::try_from(rhs.eval()?)?,
+                )),
+                "^" => Ok(Lit::Num(
+                    isize::try_from(lhs.eval()?)?.pow(isize::try_from(rhs.eval()?)? as u32),
+                )),
+                "==" => Ok(Lit::Bool(lhs.eval()? == rhs.eval()?)),
                 _ => unreachable!(),
             },
             Expr::FCall { ident, mut args } => match ident.as_str() {
@@ -54,13 +56,13 @@ impl Expr {
                         2,
                         "The add function takes exactly two arguments"
                     );
-                    let a = isize::try_from(args.pop().unwrap().eval()).unwrap();
-                    let b = isize::try_from(args.pop().unwrap().eval()).unwrap();
-                    Lit::Num(a + b)
+                    let a = isize::try_from(args.pop().unwrap().eval()?)?;
+                    let b = isize::try_from(args.pop().unwrap().eval()?)?;
+                    Ok(Lit::Num(a + b))
                 }
                 _ => panic!("Unknown function {ident}"),
             },
-            Expr::Lit(l) => l,
+            Expr::Lit(l) => Ok(l.inner),
         }
     }
 }

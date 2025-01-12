@@ -1,12 +1,15 @@
 use crate::ast::Spanned;
 
+const DEFAULT_OPS: [&'static str; 3] = ["(", ")", ","];
+
 pub struct ExprLexer {
     lexer: lexer::Lexer,
 }
 
-impl<S: AsRef<str>> FromIterator<S> for ExprLexer {
-    fn from_iter<I: IntoIterator<Item = S>>(iter: I) -> Self {
-        let tokens = lexer::Lexer::compile(&iter.into_iter().collect::<Vec<_>>());
+impl<'a> FromIterator<&'a str> for ExprLexer {
+    fn from_iter<I: IntoIterator<Item = &'a str>>(iter: I) -> Self {
+        let ops = iter.into_iter().chain(DEFAULT_OPS);
+        let tokens = lexer::Lexer::compile(ops);
 
         Self { lexer: tokens }
     }
@@ -72,7 +75,7 @@ mod tests {
             lexer
                 .tokenize("aa a abb bab aab bb abababbbaa")
                 .into_iter()
-                .map(|Spanned { inner, .. }| inner)
+                .map(Spanned::take_inner)
                 .collect::<Vec<_>>(),
             ["aa", "a", "abb", "bab", "aa", "b", "bb", "a", "bab", "abb", "b", "aa"]
                 .map(String::from)

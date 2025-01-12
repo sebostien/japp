@@ -1,38 +1,43 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, iter::Peekable};
 
 use crate::ast::{Assoc, Expr, Fixity, Lit, Spanned};
 
 pub struct ExprParser {
-    pos: usize,
     operators: HashMap<String, Fixity>,
 }
 
 impl ExprParser {
     pub fn new(operators: HashMap<String, Fixity>) -> Self {
-        Self { pos: 0, operators }
+        Self { operators }
     }
 
     /// Parse an expression based on the operators in `self`.
-    pub fn parse(&mut self, source: Vec<Spanned<String>>) -> Result<Expr, String> {
-        self.pos = 0;
-        let expr = self.parse_expr(&source, 0)?;
-        if self.pos != source.len() {
-            Err(format!("Unexpected token '{:?}'", source[self.pos]))
+    pub fn parse<I: IntoIterator<Item = Spanned<String>>>(
+        &mut self,
+        source: I,
+    ) -> Result<Expr, String> {
+        let mut source = source.into_iter().peekable();
+        let expr = self.parse_expr(&mut source, 0)?;
+        if let Some(token) = source.next() {
+            Err(format!("Unexpected token '{:?}'", token))
         } else {
             Ok(expr)
         }
     }
 
     /// Recursive parsing of expressions based on precedence.
-    fn parse_expr(
-        &mut self,
-        tokens: &Vec<Spanned<String>>,
-        precedence: usize,
-    ) -> Result<Expr, String> {
+    fn parse_expr<I>(&mut self, tokens: &mut Peekable<I>, precedence: usize) -> Result<Expr, String>
+    where
+        I: Iterator<Item = Spanned<String>>,
+    {
         let mut lhs = self.primary(tokens)?;
 
-        while self.pos < tokens.len() {
-            let op = tokens[self.pos].inner.clone();
+        while let Some(op) = tokens.peek() {
+            let op = op.inner.clone();
+            if op == "," {
+                break;
+            }
+
             let fixity = match self.operators.get(&op) {
                 Some(fixity) => fixity,
                 None => {
@@ -49,7 +54,7 @@ impl ExprParser {
                 break;
             }
 
-            self.pos += 1;
+            tokens.next();
 
             let next_prec = match fixity.assoc {
                 Assoc::Left => fixity.prec + 1,
@@ -68,51 +73,57 @@ impl ExprParser {
         Ok(lhs)
     }
 
-    fn primary(&mut self, tokens: &Vec<Spanned<String>>) -> Result<Expr, String> {
-        let token = tokens[self.pos].clone();
-        self.pos += 1;
+    fn primary<I>(&mut self, tokens: &mut Peekable<I>) -> Result<Expr, String>
+    where
+        I: Iterator<Item = Spanned<String>>,
+    {
+        let token = tokens.next().unwrap();
 
-        if &token.inner == "(" {
+        if token.inner() == "(" {
             let expr = self.parse_expr(tokens, 0)?;
-            if tokens[self.pos].inner != ")" {
+            if tokens.next().as_ref().map(Spanned::inner) != Some(&")".to_string()) {
                 return Err("Mismatched parens".to_string());
             }
-            self.pos += 1; // Consume ")"
             Ok(expr)
         } else {
-            match Lit::from(&token.inner) {
-                Lit::Ident(i) => {
-                    if self.pos < tokens.len() && tokens[self.pos].inner == "(" {
+            match Lit::from(token.inner()) {
+                Lit::Ident(_) => {
+                    if tokens.peek().map(Spanned::inner) == Some(&"(".to_string()) {
                         return self.parse_f_call(tokens, token);
                     } else {
-                        Ok(Expr::Lit(Lit::Ident(i)))
+                        Ok(Expr::Lit(token.map(Lit::Ident)))
                     }
                 }
-                lit => Ok(Expr::Lit(lit)),
+                lit => Ok(Expr::Lit(Spanned::new(lit, token.span))),
             }
         }
     }
 
-    fn parse_f_call(
+    fn parse_f_call<I>(
         &mut self,
-        tokens: &Vec<Spanned<String>>,
+        tokens: &mut Peekable<I>,
         ident: Spanned<String>,
-    ) -> Result<Expr, String> {
+    ) -> Result<Expr, String>
+    where
+        I: Iterator<Item = Spanned<String>>,
+    {
         let mut args = vec![];
-        self.pos += 1; // Consume '('
+        tokens.next(); // Consume '('
 
-        while self.pos < tokens.len() {
-            if tokens[self.pos].inner == ")" {
-                self.pos += 1; // Consume ')'
+        while let Some(token) = tokens.peek().cloned() {
+            if token.inner() == ")" {
+                tokens.next(); // Consume ')'
                 return Ok(Expr::FCall {
                     ident: ident.inner,
                     args,
                 });
+            } else if token.inner() == "," {
+                return Err(format!("Unexpected token ','"));
             }
 
             args.push(self.parse_expr(tokens, 0)?);
-            if tokens[self.pos].inner == "," {
-                self.pos += 1;
+            if tokens.peek().map(Spanned::inner) == Some(&",".to_string()) {
+                tokens.next();
             }
         }
 
@@ -173,14 +184,34 @@ mod tests {
                 },
             ),
         ]);
-        let tokens = "(2*2+2*3^2/(18))+2^3^2*11+(2-3/3)==add(5638,1)-1";
-        let lexer =
-            crate::lexer::ExprLexer::from_iter(["+", "-", "*", "/", "^", "==", "(", ")", ","]);
-        let tokens = lexer.tokenize(tokens);
+        let lexer = crate::lexer::ExprLexer::from_iter(ops.keys().map(String::as_str));
+
+        let source = "(2*2+2*3^2/(18))+2^3^2*11+(2-3/3)==add(5638,1)-1";
+        let tokens = lexer.tokenize(source);
 
         assert_eq!(
-            Lit::Bool(true),
+            Ok(Lit::Bool(true)),
             ExprParser::new(ops).parse(tokens).unwrap().eval()
         );
+    }
+
+    #[test]
+    fn extra_comma() {
+        let lexer = crate::lexer::ExprLexer::from_iter([]);
+
+        let source = "add(2,,3)";
+        let tokens = lexer.tokenize(source);
+
+        println!(
+            "{:?}",
+            ExprParser::new(HashMap::default()).parse(tokens.clone())
+        );
+        assert!(ExprParser::new(HashMap::default()).parse(tokens).is_err());
+
+        let source = "add(2,3,)";
+        let tokens = lexer.tokenize(source);
+        assert!(ExprParser::new(HashMap::default()).parse(tokens).is_ok());
+
+        panic!()
     }
 }
