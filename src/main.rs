@@ -1,5 +1,4 @@
-use chumsky::prelude::*;
-use japp::parser;
+use japp::parse_string;
 
 #[derive(Debug)]
 enum ErrorCode {
@@ -22,10 +21,10 @@ fn main() -> Result<(), ErrorCode> {
     })?;
     let source = source.as_str();
 
-    match parser().parse(source) {
+    match parse_string(source) {
         Ok(source) => {
             println!("{source:#?}\n");
-            println!("{source}");
+            // println!("{source}");
             Ok(())
         }
         Err(e) => {

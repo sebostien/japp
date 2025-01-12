@@ -1,17 +1,23 @@
-use std::ops::Range;
+use super::{Assoc, Expr, Fixity, Spanned};
 
-#[derive(Debug, PartialEq)]
-pub struct Spanned<T> {
-    pub span: Range<usize>,
-    pub inner: T,
+#[derive(Debug)]
+pub enum Decl {
+    Let {
+        ident: String,
+        expr: Expr,
+    },
+    Fn {
+        ident: String,
+        args: Vec<Spanned<String>>,
+        body: Expr,
+    },
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Decl {
+pub enum UnparsedDecl {
     Infix {
         ident: Spanned<String>,
-        prec: usize,
-        assoc: Assoc,
+        fixity: Fixity,
     },
     Let {
         ident: Spanned<String>,
@@ -22,36 +28,19 @@ pub enum Decl {
         args: Vec<Spanned<String>>,
         body: Spanned<String>,
     },
-    Error,
+    // Error, // TODO: Error recovery
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub enum Assoc {
-    /// Left associativity
-    ///
-    /// `1 / 2 / 3 = (1 / 2) / 3`
-    Left,
-    /// Right associativity
-    ///
-    /// `1^2^3 = 1^(2^3)`
-    Right,
-    /// No associativity
-    ///
-    /// Ok : "1 == (2 == 3)"
-    /// Err: "1 == 2 == 3"
-    None,
-}
-
-impl std::fmt::Display for Decl {
+impl std::fmt::Display for UnparsedDecl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Infix { ident, prec, assoc } => {
-                let assoc = match assoc {
+            Self::Infix { ident, fixity } => {
+                let assoc = match fixity.assoc {
                     Assoc::Left => "l",
                     Assoc::Right => "r",
                     Assoc::None => "",
                 };
-                write!(f, "infix{assoc} {ident} {prec};")
+                write!(f, "infix{assoc} {ident} {};", fixity.prec)
             }
             Self::Let { ident, rhs } => {
                 write!(f, "let {ident} = {rhs} ;")
@@ -64,13 +53,6 @@ impl std::fmt::Display for Decl {
                     .join(" ");
                 write!(f, "fn {ident} {args} = {body} ;")
             }
-            Self::Error => Ok(()),
         }
-    }
-}
-
-impl<T: std::fmt::Display> std::fmt::Display for Spanned<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.inner.fmt(f)
     }
 }

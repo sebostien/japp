@@ -1,12 +1,15 @@
 use ariadne::{Label, Report, ReportKind};
 use chumsky::{error::SimpleReason, prelude::*};
+use lexer::ExprLexer;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
-mod decl;
-mod program;
+mod ast;
+mod expr_parser;
+mod lexer;
 
-use decl::{Assoc, Decl, Spanned};
-use program::Program;
+use ast::{Assoc, Decl, Fixity, Program, Spanned, UnparsedDecl, UnparsedProgram};
+use expr_parser::ExprParser;
 use text::TextParser;
 
 pub fn make_reports<'f>(
@@ -73,7 +76,7 @@ fn unparsed_expr() -> impl Parser<char, Spanned<String>, Error = Simple<char>> {
         })
 }
 
-fn decl() -> impl Parser<char, Decl, Error = Simple<char>> {
+fn decl() -> impl Parser<char, UnparsedDecl, Error = Simple<char>> {
     let infix_decl = choice((
         text::keyword("infixl").map(|_| Assoc::Left),
         text::keyword("infixr").map(|_| Assoc::Right),
@@ -92,14 +95,17 @@ fn decl() -> impl Parser<char, Decl, Error = Simple<char>> {
         }
     }))
     .then_ignore(just(';'))
-    .map(|((assoc, ident), prec)| Decl::Infix { ident, prec, assoc });
+    .map(|((assoc, ident), prec)| UnparsedDecl::Infix {
+        ident,
+        fixity: Fixity { prec, assoc },
+    });
 
     let let_decl = text::keyword("let")
         .ignore_then(ident())
         .then_ignore(just('='))
         .then(unparsed_expr())
         .then_ignore(just(';'))
-        .map(|(ident, rhs)| Decl::Let { ident, rhs });
+        .map(|(ident, rhs)| UnparsedDecl::Let { ident, rhs });
 
     let fn_decl = text::keyword("fn")
         .ignore_then(ident())
@@ -107,16 +113,85 @@ fn decl() -> impl Parser<char, Decl, Error = Simple<char>> {
         .then_ignore(just('='))
         .then(unparsed_expr())
         .then_ignore(just(';'))
-        .map(|((ident, args), body)| Decl::Fn { ident, args, body });
+        .map(|((ident, args), body)| UnparsedDecl::Fn { ident, args, body });
 
     infix_decl.or(let_decl).or(fn_decl).padded()
 }
 
-pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
+fn parser() -> impl Parser<char, UnparsedProgram, Error = Simple<char>> {
     decl()
         .repeated()
-        .map(|exprs| Program { exprs })
+        .map(|exprs| UnparsedProgram { decls: exprs })
         .then_ignore(end())
+}
+
+pub fn parse_string(source: &str) -> Result<Program, Vec<Simple<char>>> {
+    let program = parser().parse(source)?;
+
+    let mut declarations = vec![];
+    let mut operators = HashMap::new();
+    let mut errors = vec![];
+
+    for decl in program.decls {
+        match decl {
+            UnparsedDecl::Infix { ident, fixity } => {
+                if operators.insert(ident.inner.clone(), fixity).is_some() {
+                    errors.push(Simple::custom(
+                        ident.span,
+                        format!("Fixity for '{}' is already defined", ident.inner),
+                    ));
+                }
+            }
+            d => {
+                declarations.push(d);
+            }
+        }
+    }
+
+    let lexer = ExprLexer::from_iter(
+        operators
+            .iter()
+            .map(|a| a.0.as_str())
+            .chain(["(", ")", ","].into_iter()),
+    );
+    let mut tokens = HashSet::new();
+    let mut parser = ExprParser::new(operators);
+    let mut parsed_program = Program {
+        declarations: vec![],
+    };
+
+    for decl in declarations {
+        match decl {
+            UnparsedDecl::Let { ident, rhs } => {
+                let tokens = lexer.tokenize(&rhs.inner);
+                let expr = parser.parse(tokens).unwrap();
+
+                parsed_program.declarations.push(Decl::Let {
+                    ident: ident.inner,
+                    expr,
+                });
+            }
+            UnparsedDecl::Fn { ident, args, body } => {
+                let body = lexer.tokenize(&body.inner);
+                let body = parser.parse(body).unwrap();
+
+                tokens.insert(ident.inner.clone());
+
+                parsed_program.declarations.push(Decl::Fn {
+                    ident: ident.inner,
+                    args,
+                    body,
+                });
+            }
+            UnparsedDecl::Infix { .. } => unreachable!(),
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(parsed_program)
+    } else {
+        Err(errors)
+    }
 }
 
 #[cfg(test)]
