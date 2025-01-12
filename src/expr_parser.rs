@@ -12,7 +12,7 @@ impl ExprParser {
     }
 
     /// Parse an expression based on the operators in `self`.
-    pub fn parse<I: IntoIterator<Item = Spanned<String>>>(
+    pub fn parse<'a, I: IntoIterator<Item = Spanned<&'a str>>>(
         &mut self,
         source: I,
     ) -> Result<Expr, String> {
@@ -26,19 +26,20 @@ impl ExprParser {
     }
 
     /// Recursively parse tokens.
-    fn parse_expr<I>(&mut self, tokens: &mut Peekable<I>, precedence: usize) -> Result<Expr, String>
+    fn parse_expr<'a, I>(
+        &mut self,
+        tokens: &mut Peekable<I>,
+        precedence: usize,
+    ) -> Result<Expr, String>
     where
-        I: Iterator<Item = Spanned<String>>,
+        I: Iterator<Item = Spanned<&'a str>>,
     {
         let mut lhs = self.primary(tokens)?;
 
         while let Some(op) = tokens.peek() {
-            let op = op.inner.clone();
-            if op == "," {
-                break;
-            }
+            let op = op.inner;
 
-            let fixity = match self.operators.get(&op) {
+            let fixity = match self.operators.get(op) {
                 Some(fixity) => fixity,
                 None => {
                     break;
@@ -65,7 +66,7 @@ impl ExprParser {
             let rhs = self.parse_expr(tokens, next_prec)?;
             lhs = Expr::Binary {
                 lhs: Box::new(lhs),
-                op,
+                op: op.to_string(),
                 rhs: Box::new(rhs),
             }
         }
@@ -73,25 +74,25 @@ impl ExprParser {
         Ok(lhs)
     }
 
-    fn primary<I>(&mut self, tokens: &mut Peekable<I>) -> Result<Expr, String>
+    fn primary<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<Expr, String>
     where
-        I: Iterator<Item = Spanned<String>>,
+        I: Iterator<Item = Spanned<&'a str>>,
     {
         let token = tokens.next().unwrap();
 
-        if token.inner() == "(" {
+        if token.inner == "(" {
             let expr = self.parse_expr(tokens, 0)?;
-            if tokens.next().as_ref().map(Spanned::inner) != Some(&")".to_string()) {
+            if tokens.next().as_ref().map(Spanned::inner) != Some(&")") {
                 return Err("Mismatched parens".to_string());
             }
             Ok(expr)
         } else {
             match Lit::from(token.inner()) {
                 Lit::Ident(_) => {
-                    if tokens.peek().map(Spanned::inner) == Some(&"(".to_string()) {
+                    if tokens.peek().map(Spanned::inner) == Some(&"(") {
                         return self.parse_f_call(tokens, token);
                     } else {
-                        Ok(Expr::Lit(token.map(Lit::Ident)))
+                        Ok(Expr::Lit(token.map(String::from).map(Lit::Ident)))
                     }
                 }
                 lit => Ok(Expr::Lit(Spanned::new(lit, token.span))),
@@ -99,30 +100,30 @@ impl ExprParser {
         }
     }
 
-    fn parse_f_call<I>(
+    fn parse_f_call<'a, I>(
         &mut self,
         tokens: &mut Peekable<I>,
-        ident: Spanned<String>,
+        ident: Spanned<&str>,
     ) -> Result<Expr, String>
     where
-        I: Iterator<Item = Spanned<String>>,
+        I: Iterator<Item = Spanned<&'a str>>,
     {
         let mut args = vec![];
         tokens.next(); // Consume '('
 
         while let Some(token) = tokens.peek().cloned() {
-            if token.inner() == ")" {
+            if token.inner == ")" {
                 tokens.next(); // Consume ')'
                 return Ok(Expr::FCall {
-                    ident: ident.inner,
+                    ident: ident.inner.to_string(),
                     args,
                 });
-            } else if token.inner() == "," {
+            } else if token.inner == "," {
                 return Err(format!("Unexpected token ','"));
             }
 
             args.push(self.parse_expr(tokens, 0)?);
-            if tokens.peek().map(Spanned::inner) == Some(&",".to_string()) {
+            if tokens.peek().map(Spanned::inner) == Some(&",") {
                 tokens.next();
             }
         }

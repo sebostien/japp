@@ -16,38 +16,36 @@ impl<'a> FromIterator<&'a str> for ExprLexer {
 }
 
 impl ExprLexer {
-    pub fn tokenize(&self, source: &str) -> Vec<Spanned<String>> {
+    pub fn tokenize<'a>(&self, source: &'a str) -> Vec<Spanned<&'a str>> {
         let mut tokens = vec![];
-        let source = source.chars().collect::<Vec<_>>();
+        let chars = source.chars().collect::<Vec<_>>();
 
-        let mut current: Option<Spanned<String>> = None;
+        let mut current: Option<Spanned<&'a str>> = None;
         let mut i = 0;
-        while i < source.len() {
-            if source[i].is_whitespace() {
+        let mut k = 0;
+        while i < chars.len() {
+            if chars[i].is_whitespace() {
                 if let Some(token) = current.take() {
                     tokens.push(token);
                 }
                 i += 1;
-            } else if let Some(m) = self
-                .lexer
-                .find(&source[i..].into_iter().collect::<String>())
-            {
+            } else if let Some(m) = self.lexer.find(&chars[i..].into_iter().collect::<String>()) {
                 if let Some(token) = current.take() {
                     tokens.push(token);
                 }
                 tokens.push(Spanned {
                     span: i..i + m,
-                    inner: source[i..i + m].into_iter().collect(),
+                    inner: &source[i..i + m],
                 });
                 i += m;
             } else if let Some(prev) = current.as_mut() {
                 prev.span = prev.span.start..prev.span.end + 1;
-                prev.inner.push(source[i]);
+                prev.inner = &source[prev.span.clone()];
                 i += 1;
             } else {
                 current = Some(Spanned {
                     span: i..i + 1,
-                    inner: source[i].to_string(),
+                    inner: &source[i..i + 1],
                 });
                 i += 1;
             }
@@ -92,23 +90,23 @@ mod tests {
             [
                 Spanned {
                     span: 0..1,
-                    inner: "a".to_string()
+                    inner: "a",
                 },
                 Spanned {
                     span: 1..2,
-                    inner: "a".to_string()
+                    inner: "a"
                 },
                 Spanned {
                     span: 3..5,
-                    inner: "ab".to_string()
+                    inner: "ab"
                 },
                 Spanned {
                     span: 6..7,
-                    inner: "b".to_string()
+                    inner: "b"
                 },
                 Spanned {
                     span: 10..11,
-                    inner: "b".to_string()
+                    inner: "b"
                 },
             ],
         );
