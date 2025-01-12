@@ -25,7 +25,7 @@ impl ExprParser {
         }
     }
 
-    /// Recursive parsing of expressions based on precedence.
+    /// Recursively parse tokens.
     fn parse_expr<I>(&mut self, tokens: &mut Peekable<I>, precedence: usize) -> Result<Expr, String>
     where
         I: Iterator<Item = Spanned<String>>,
@@ -201,17 +201,10 @@ mod tests {
 
         let source = "add(2,,3)";
         let tokens = lexer.tokenize(source);
-
-        println!(
-            "{:?}",
-            ExprParser::new(HashMap::default()).parse(tokens.clone())
-        );
         assert!(ExprParser::new(HashMap::default()).parse(tokens).is_err());
 
         let source = "add(2,3,)";
         let tokens = lexer.tokenize(source);
         assert!(ExprParser::new(HashMap::default()).parse(tokens).is_ok());
-
-        panic!()
     }
 }
