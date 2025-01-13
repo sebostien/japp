@@ -1,4 +1,4 @@
-use japp::parse;
+use parser::parse;
 
 #[derive(Debug)]
 enum ErrorCode {
@@ -28,7 +28,7 @@ fn main() -> Result<(), ErrorCode> {
             Ok(())
         }
         Err(e) => {
-            for report in japp::nom_make_reports(file_name, &e) {
+            for report in japp::make_parse_reports(file_name, &e) {
                 if let Err(e) = report.print((file_name, ariadne::Source::from(source))) {
                     eprintln!("{e}");
                     return Err(ErrorCode::IoError);

@@ -3,14 +3,10 @@ use nom::bytes::complete::{tag, take_till};
 use nom::character::complete::{digit1, multispace1, space1};
 use nom::combinator::eof;
 use nom::multi::many0;
-use nom::Finish;
 use nom::Parser;
-use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
-use crate::ast::{Assoc, Decl, Fixity, Program, Spanned, UnparsedDecl, UnparsedProgram};
-use crate::expr_parser::ExprParser;
-use crate::lexer::ExprLexer;
+use crate::ast::{Assoc, Fixity, UnparsedDecl, UnparsedProgram};
 
 #[derive(Debug)]
 pub struct ParseError<'source> {
@@ -41,7 +37,6 @@ impl<'a> nom::error::ParseError<Source<'a>> for ParseError<'_> {
     }
 
     fn append(input: Source<'a>, kind: nom::error::ErrorKind, mut other: Self) -> Self {
-        // println!("\nThis: {input:?}\n      {kind:?}\nAppend: {other:?}");
         other.span.start = other.span.start.min(input.byte_offset());
         other.span.end = other.span.end.max(input.byte_offset());
 
@@ -128,7 +123,7 @@ fn ident<'a>(input: Source<'a>) -> IResult<'a, Source<'a>> {
 
 fn unparsed_expr<'a>(input: Source<'a>) -> IResult<'a, Source<'a>> {
     let input = spaces(input);
-    let (input, expr) = convert_nom_error(take_till(|c: char| c == ';')(input))?;
+    let (input, expr) = convert_nom_error(take_till(|c| c == ';')(input))?;
     Ok((input, expr))
 }
 
@@ -206,8 +201,7 @@ fn decl<'a>(input: Source<'a>) -> IResult<'a, UnparsedDecl> {
     alt((infix_decl, let_decl, fn_decl))(input)
 }
 
-// fn parser() -> impl Parser<char, UnparsedProgram, Error = Simple<char>> {
-fn parse_program<'a>(input: &'a str) -> nom::IResult<Source<'a>, UnparsedProgram, ParseError> {
+pub fn parse_program<'a>(input: &'a str) -> IResult<'a, UnparsedProgram> {
     let input = Source::new_for_ut8(input);
 
     let (input, decls) = many0(decl)(input)?;
@@ -217,132 +211,19 @@ fn parse_program<'a>(input: &'a str) -> nom::IResult<Source<'a>, UnparsedProgram
     Ok((input, UnparsedProgram { decls }))
 }
 
-pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
-    let (_, program) = parse_program(source).finish().map_err(|e| vec![e])?;
-
-    let mut declarations = vec![];
-    let mut operators: HashMap<&str, (Range<usize>, Fixity)> = HashMap::new();
-    let mut errors = vec![];
-
-    for decl in program.decls {
-        match decl {
-            UnparsedDecl::Infix { ident, fixity } => {
-                let this_span = ident.byte_offset()..ident.len();
-                if let Some((other_span, _)) =
-                    operators.insert(*ident.data(), (this_span.clone(), fixity))
-                {
-                    errors.push(ParseError {
-                        span: this_span,
-                        error: ErrorKind::DuplicateFixity { other: other_span },
-                    });
-                }
-            }
-            d => {
-                declarations.push(d);
-            }
-        }
-    }
-
-    let lexer = ExprLexer::from_iter(
-        operators
-            .iter()
-            .map(|a| *a.0)
-            .chain(["(", ")", ","].into_iter()),
-    );
-    let mut tokens = HashSet::new();
-    let mut parser = ExprParser::new(operators);
-    let mut parsed_program = Program {
-        declarations: vec![],
-    };
-
-    for decl in declarations {
-        match decl {
-            UnparsedDecl::Let { ident, rhs } => {
-                let tokens = lexer.tokenize(*rhs.data());
-                let expr = parser.parse(tokens).unwrap();
-
-                parsed_program.declarations.push(Decl::Let {
-                    ident: *ident.data(),
-                    rhs: expr,
-                });
-            }
-            UnparsedDecl::Fn { ident, args, body } => {
-                let body = lexer.tokenize(*body.data());
-                let body = parser.parse(body).unwrap();
-
-                tokens.insert(*ident.data());
-
-                parsed_program.declarations.push(Decl::Fn {
-                    ident: ident.data(),
-                    args: args
-                        .into_iter()
-                        .map(|arg| Spanned {
-                            span: arg.byte_offset()..arg.data().len(),
-                            inner: *arg.data(),
-                        })
-                        .collect(),
-                    body,
-                });
-            }
-            UnparsedDecl::Infix { .. } => unreachable!(),
-        }
-    }
-
-    if errors.is_empty() {
-        Ok(parsed_program)
-    } else {
-        Err(errors)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parse;
 
-    // fn test_parser_ok(test_loc: &str, source: &str, expected: &str) {
-    //     let file_name = "test";
-    //
-    //     match parser().parse(source) {
-    //         Ok(actual) => {
-    //             assert_eq!(
-    //                 actual.to_string(),
-    //                 expected,
-    //                 "Not the expected result from test {test_loc}\nParsing:\n'''\n{source}\n'''\nActual (left) vs Expected (right)"
-    //             );
-    //         }
-    //         Err(e) => {
-    //             let mut out = Vec::new();
-    //             for report in make_reports(file_name, &e) {
-    //                 report
-    //                     .write((file_name, ariadne::Source::from(source)), &mut out)
-    //                     .unwrap();
-    //             }
-    //             let out = String::from_utf8(out).unwrap();
-    //             panic!("Expected successful parse on test {test_loc}\n{out}");
-    //         }
-    //     }
-    // }
-    //
-    // macro_rules! test_parser_ok {
-    //     ($source:expr,$expected:expr,) => {
-    //         test_parser_ok!($source, $expected)
-    //     };
-    //     ($source:expr,$expected:expr) => {
-    //         test_parser_ok(
-    //             &format!("{}:{}:{}", file!(), line!(), column!()),
-    //             $source,
-    //             $expected,
-    //         );
-    //     };
-    // }
-    //
     #[test]
-    fn t_parse_let() {
+    fn t_let() {
         assert!(let_decl(Source::new_for_ut8("let a = -   -a;")).is_ok());
         let a = let_decl(Source::new_for_ut8("\nlet \n c = \n -\n\n   a \n;"));
         assert!(a.is_ok(), "{a:?}");
         assert!(let_decl(Source::new_for_ut8("let z =  -a  \n\n; ")).is_ok());
         assert!(let_decl(Source::new_for_ut8("let a23 = a + b ;")).is_ok());
+        assert!(let_decl(Source::new_for_ut8("let b = a + b ;")).is_ok());
         assert!(let_decl(Source::new_for_ut8(
             "let add = 1+(2 + (3+((4)))) == (1 + 2 + 3 +4);"
         ))
@@ -394,32 +275,10 @@ mod tests {
         assert_eq!(id.byte_offset(), 0);
     }
 
-    // #[test]
-    // fn t_parse_big() {
-    //     test_parser_ok!(
-    //         r#"
-    //             let a = a ;
-    //             let b = a + b ;
-    //
-    //             fn add x y = x + y ;
-    //
-    //             let zz = add(a * b, b) ;
-    //
-    //         "#,
-    //         &vec![
-    //             "let a = a ;",
-    //             "let b = a + b ;",
-    //             "fn add x y = x + y ;",
-    //             "let zz = add(a * b, b) ;",
-    //         ]
-    //         .join("\n"),
-    //     );
-    // }
-    //
     // //////////////////////////////////////////////////
     // ///// Errors ////////////////////////////////////
     // ////////////////////////////////////////////////
-    //
+
     fn test_parser_err(test_loc: &str, source: &str, reason: &str) {
         match parse(source) {
             Ok(actual) => {
@@ -429,7 +288,7 @@ mod tests {
                 );
             }
             Err(_) => {
-                // TODO: Validate msg
+                // TODO: Validate error message
             }
         }
     }

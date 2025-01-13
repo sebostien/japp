@@ -73,7 +73,18 @@ impl std::fmt::Display for Expr {
             Expr::Binary { lhs, op, rhs } => write!(f, "( {lhs} {op} {rhs} )"),
             Expr::Lit(lit) => lit.fmt(f),
             Expr::FCall { ident, args } => {
-                write!(f, "{ident} ( {} )", args[0])
+                write!(f, "{ident} (")?;
+
+                let last = args.len().wrapping_sub(1);
+                for (i, arg) in args.into_iter().enumerate() {
+                    if i == last {
+                        write!(f, " {arg}")?;
+                    } else {
+                        write!(f, " {arg} ,")?;
+                    }
+                }
+
+                write!(f, " )")
             }
         }
     }

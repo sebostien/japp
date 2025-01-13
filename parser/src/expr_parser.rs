@@ -137,7 +137,7 @@ impl<'ops> ExprParser<'ops> {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::ast::{Assoc, Fixity, Lit};
+    use crate::ast::{Assoc, Expr, Fixity, Lit, Spanned};
     use crate::expr_parser::ExprParser;
 
     #[test]
@@ -212,6 +212,48 @@ mod tests {
         assert_eq!(
             Ok(Lit::Bool(true)),
             ExprParser::new(ops).parse(tokens).unwrap().eval()
+        );
+    }
+
+    #[test]
+    fn simple() {
+        let ops = HashMap::from_iter([(
+            "*",
+            (
+                0..0,
+                Fixity {
+                    prec: 3,
+                    assoc: Assoc::Left,
+                },
+            ),
+        )]);
+        let lexer = crate::lexer::ExprLexer::from_iter(ops.keys().copied());
+
+        let source = "add(2*2, 2)";
+        let tokens = lexer.tokenize(source);
+
+        assert_eq!(
+            Expr::FCall {
+                ident: "add".to_string(),
+                args: vec![
+                    Expr::Binary {
+                        lhs: Box::new(Expr::Lit(Spanned {
+                            span: 4..5,
+                            inner: Lit::Num(2)
+                        })),
+                        op: "*".to_string(),
+                        rhs: Box::new(Expr::Lit(Spanned {
+                            span: 6..7,
+                            inner: Lit::Num(2)
+                        }))
+                    },
+                    Expr::Lit(Spanned {
+                        span: 9..10,
+                        inner: Lit::Num(2)
+                    })
+                ]
+            },
+            ExprParser::new(ops).parse(tokens).unwrap()
         );
     }
 

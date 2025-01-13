@@ -1,15 +1,8 @@
 use ariadne::{Label, Report, ReportKind};
+use parser::{ErrorKind, ParseError};
 use std::ops::Range;
 
-mod ast;
-mod expr_parser;
-mod lexer;
-mod parser;
-
-pub use parser::parse;
-use parser::{ErrorKind, ParseError};
-
-pub fn nom_make_reports<'f>(
+pub fn make_parse_reports<'f>(
     file_name: &'f str,
     errors: &[ParseError],
 ) -> Vec<Report<'f, (&'f str, Range<usize>)>> {
@@ -50,34 +43,3 @@ pub fn nom_make_reports<'f>(
         })
         .collect()
 }
-
-// pub fn make_reports<'f>(
-//     file_name: &'f str,
-//     errors: &[Simple<char>],
-// ) -> Vec<Report<'f, (&'f str, Range<usize>)>> {
-//     errors
-//         .iter()
-//         .map(|error| {
-//             let mut report = Report::build(ReportKind::Error, (file_name, error.span()));
-//
-//             let message = match error.reason() {
-//                 SimpleReason::Unexpected => {
-//                     report = report.with_message("Unexpected token");
-//                     error.to_string()
-//                 }
-//                 SimpleReason::Unclosed { span, delimiter } => todo!(
-//                     "Check if the following is a good message: {:?} {} ::: {:?} ::: {}",
-//                     error,
-//                     error,
-//                     span,
-//                     delimiter
-//                 ),
-//                 SimpleReason::Custom(e) => e.clone(),
-//             };
-//
-//             report
-//                 .with_label(Label::new((file_name, error.span())).with_message(message))
-//                 .finish()
-//         })
-//         .collect()
-// }
