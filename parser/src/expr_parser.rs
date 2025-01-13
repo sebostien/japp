@@ -16,7 +16,7 @@ impl<'ops> ExprParser<'ops> {
     pub fn parse<'a, I: IntoIterator<Item = Spanned<&'a str>>>(
         &mut self,
         source: I,
-    ) -> Result<Expr, String> {
+    ) -> Result<Expr<'a>, String> {
         let mut source = source.into_iter().peekable();
         let expr = self.parse_expr(&mut source, 0)?;
         if let Some(token) = source.next() {
@@ -27,20 +27,20 @@ impl<'ops> ExprParser<'ops> {
     }
 
     /// Recursively parse tokens.
-    fn parse_expr<'a, I>(
+    fn parse_expr<'source, I>(
         &mut self,
         tokens: &mut Peekable<I>,
         precedence: usize,
-    ) -> Result<Expr, String>
+    ) -> Result<Expr<'source>, String>
     where
-        I: Iterator<Item = Spanned<&'a str>>,
+        I: Iterator<Item = Spanned<&'source str>>,
     {
         let mut lhs = self.primary(tokens)?;
 
         while let Some(op) = tokens.peek() {
-            let op = op.inner;
+            let op = op.clone();
 
-            let fixity = match self.operators.get(op) {
+            let fixity = match self.operators.get(op.inner) {
                 Some(fixity) => fixity,
                 None => {
                     break;
@@ -67,7 +67,7 @@ impl<'ops> ExprParser<'ops> {
             let rhs = self.parse_expr(tokens, next_prec)?;
             lhs = Expr::Binary {
                 lhs: Box::new(lhs),
-                op: op.to_string(),
+                op: op.clone(),
                 rhs: Box::new(rhs),
             }
         }
@@ -75,9 +75,9 @@ impl<'ops> ExprParser<'ops> {
         Ok(lhs)
     }
 
-    fn primary<'a, I>(&mut self, tokens: &mut Peekable<I>) -> Result<Expr, String>
+    fn primary<'source, I>(&mut self, tokens: &mut Peekable<I>) -> Result<Expr<'source>, String>
     where
-        I: Iterator<Item = Spanned<&'a str>>,
+        I: Iterator<Item = Spanned<&'source str>>,
     {
         let token = tokens.next().unwrap();
 
@@ -88,12 +88,12 @@ impl<'ops> ExprParser<'ops> {
             }
             Ok(expr)
         } else {
-            match Lit::from(token.inner()) {
+            match Lit::from(token.inner) {
                 Lit::Ident(_) => {
                     if tokens.peek().map(Spanned::inner) == Some(&"(") {
                         return self.parse_f_call(tokens, token);
                     } else {
-                        Ok(Expr::Lit(token.map(String::from).map(Lit::Ident)))
+                        Ok(Expr::Lit(token.map(Lit::Ident)))
                     }
                 }
                 lit => Ok(Expr::Lit(Spanned::new(lit, token.span))),
@@ -101,13 +101,13 @@ impl<'ops> ExprParser<'ops> {
         }
     }
 
-    fn parse_f_call<'a, I>(
+    fn parse_f_call<'source, I>(
         &mut self,
         tokens: &mut Peekable<I>,
-        ident: Spanned<&str>,
-    ) -> Result<Expr, String>
+        ident: Spanned<&'source str>,
+    ) -> Result<Expr<'source>, String>
     where
-        I: Iterator<Item = Spanned<&'a str>>,
+        I: Iterator<Item = Spanned<&'source str>>,
     {
         let mut args = vec![];
         tokens.next(); // Consume '('
@@ -115,10 +115,7 @@ impl<'ops> ExprParser<'ops> {
         while let Some(token) = tokens.peek().cloned() {
             if token.inner == ")" {
                 tokens.next(); // Consume ')'
-                return Ok(Expr::FCall {
-                    ident: ident.inner.to_string(),
-                    args,
-                });
+                return Ok(Expr::FCall { ident, args });
             } else if token.inner == "," {
                 return Err(format!("Unexpected token ','"));
             }
@@ -234,14 +231,20 @@ mod tests {
 
         assert_eq!(
             Expr::FCall {
-                ident: "add".to_string(),
+                ident: Spanned {
+                    span: 0..3,
+                    inner: "add"
+                },
                 args: vec![
                     Expr::Binary {
                         lhs: Box::new(Expr::Lit(Spanned {
                             span: 4..5,
                             inner: Lit::Num(2)
                         })),
-                        op: "*".to_string(),
+                        op: Spanned {
+                            span: 5..6,
+                            inner: "*"
+                        },
                         rhs: Box::new(Expr::Lit(Spanned {
                             span: 6..7,
                             inner: Lit::Num(2)

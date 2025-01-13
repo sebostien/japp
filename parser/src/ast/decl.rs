@@ -4,12 +4,12 @@ use super::{Assoc, Expr, Fixity, Spanned};
 pub enum Decl<'a> {
     Let {
         ident: &'a str,
-        rhs: Expr,
+        rhs: Expr<'a>,
     },
     Fn {
         ident: &'a str,
         args: Vec<Spanned<&'a str>>,
-        body: Expr,
+        body: Expr<'a>,
     },
 }
 

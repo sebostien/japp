@@ -1,28 +1,29 @@
 use super::{Lit, Spanned};
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Expr {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Expr<'a> {
     Binary {
-        lhs: Box<Expr>,
-        op: String,
-        rhs: Box<Expr>,
+        lhs: Box<Expr<'a>>,
+        op: Spanned<&'a str>,
+        rhs: Box<Expr<'a>>,
     },
     FCall {
-        ident: String,
-        args: Vec<Expr>,
+        ident: Spanned<&'a str>,
+        args: Vec<Expr<'a>>,
     },
-    Lit(Spanned<Lit>),
+    Lit(Spanned<Lit<'a>>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum EvalError {
-    ExpectedInt(Lit),
+pub enum EvalError<'a> {
+    ExpectedInt(Lit<'a>),
+    ExpectedBool(Lit<'a>),
 }
 
-impl Expr {
-    pub fn eval(self) -> Result<Lit, EvalError> {
+impl<'a> Expr<'a> {
+    pub fn eval(self) -> Result<Lit<'a>, EvalError<'a>> {
         match self {
-            Expr::Binary { lhs, op, rhs } => match op.as_str() {
+            Expr::Binary { lhs, op, rhs } => match op.inner {
                 "+" => Ok(Lit::Num(
                     isize::try_from(lhs.eval()?)? + isize::try_from(rhs.eval()?)?,
                 )),
@@ -41,7 +42,7 @@ impl Expr {
                 "==" => Ok(Lit::Bool(lhs.eval()? == rhs.eval()?)),
                 _ => unreachable!(),
             },
-            Expr::FCall { ident, mut args } => match ident.as_str() {
+            Expr::FCall { ident, mut args } => match ident.inner {
                 "identity" => {
                     assert_eq!(
                         args.len(),
@@ -67,7 +68,7 @@ impl Expr {
     }
 }
 
-impl std::fmt::Display for Expr {
+impl std::fmt::Display for Expr<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Expr::Binary { lhs, op, rhs } => write!(f, "( {lhs} {op} {rhs} )"),
