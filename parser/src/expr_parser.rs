@@ -204,7 +204,7 @@ mod tests {
         let lexer = crate::lexer::ExprLexer::from_iter(ops.keys().copied());
 
         let source = "(2*2+2*3^2/(18))+2^3^2*11+(2-3/3)==add(5638,1)-1";
-        let tokens = lexer.tokenize(source);
+        let tokens = lexer.tokenize(0, source);
 
         assert_eq!(
             Ok(Lit::Bool(true)),
@@ -227,7 +227,7 @@ mod tests {
         let lexer = crate::lexer::ExprLexer::from_iter(ops.keys().copied());
 
         let source = "add(2*2, 2)";
-        let tokens = lexer.tokenize(source);
+        let tokens = lexer.tokenize(0, source);
 
         assert_eq!(
             Expr::FCall {
@@ -265,11 +265,11 @@ mod tests {
         let lexer = crate::lexer::ExprLexer::from_iter([]);
 
         let source = "add(2,,3)";
-        let tokens = lexer.tokenize(source);
+        let tokens = lexer.tokenize(0, source);
         assert!(ExprParser::new(HashMap::default()).parse(tokens).is_err());
 
         let source = "add(2,3,)";
-        let tokens = lexer.tokenize(source);
+        let tokens = lexer.tokenize(0, source);
         assert!(ExprParser::new(HashMap::default()).parse(tokens).is_ok());
     }
 }

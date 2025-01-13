@@ -16,7 +16,7 @@ impl<'a> FromIterator<&'a str> for ExprLexer {
 }
 
 impl ExprLexer {
-    pub fn tokenize<'a>(&self, source: &'a str) -> Vec<Spanned<&'a str>> {
+    pub fn tokenize<'a>(&self, offset: usize, source: &'a str) -> Vec<Spanned<&'a str>> {
         let mut tokens = vec![];
         let chars = source.chars().collect::<Vec<_>>();
 
@@ -51,7 +51,10 @@ impl ExprLexer {
         }
 
         if let Some(current) = current {
-            tokens.push(current);
+            tokens.push(Spanned {
+                span: offset + current.span.start..offset + current.span.end,
+                inner: current.inner,
+            });
         }
 
         tokens
@@ -70,7 +73,7 @@ mod tests {
 
         assert_eq!(
             lexer
-                .tokenize("aa a abb bab aab bb abababbbaa")
+                .tokenize(0, "aa a abb bab aab bb abababbbaa")
                 .into_iter()
                 .map(Spanned::take_inner)
                 .collect::<Vec<_>>(),
@@ -85,7 +88,7 @@ mod tests {
         let lexer = ExprLexer::from_iter(["a", "b", "ab"]);
 
         assert_eq!(
-            lexer.tokenize("aa ab b   b"),
+            lexer.tokenize(0, "aa ab b   b"),
             [
                 Spanned {
                     span: 0..1,
