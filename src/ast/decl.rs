@@ -1,37 +1,56 @@
 use super::{Assoc, Expr, Fixity, Spanned};
 
 #[derive(Debug)]
-pub enum Decl {
+pub enum Decl<'a> {
     Let {
-        ident: String,
-        expr: Expr,
+        ident: &'a str,
+        rhs: Expr,
     },
     Fn {
-        ident: String,
-        args: Vec<Spanned<String>>,
+        ident: &'a str,
+        args: Vec<Spanned<&'a str>>,
         body: Expr,
     },
 }
 
+impl std::fmt::Display for Decl<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Let { ident, rhs: expr } => {
+                write!(f, "let {ident} = {expr} ;")
+            }
+            Self::Fn { ident, args, body } => {
+                let args = args
+                    .iter()
+                    .map(Spanned::inner)
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                write!(f, "fn {ident} {args} = {body} ;")
+            }
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
-pub enum UnparsedDecl {
+pub enum UnparsedDecl<'a> {
     Infix {
-        ident: Spanned<String>,
+        ident: nom_span::Spanned<&'a str>,
         fixity: Fixity,
     },
     Let {
-        ident: Spanned<String>,
-        rhs: Spanned<String>,
+        ident: nom_span::Spanned<&'a str>,
+        rhs: nom_span::Spanned<&'a str>,
     },
     Fn {
-        ident: Spanned<String>,
-        args: Vec<Spanned<String>>,
-        body: Spanned<String>,
+        ident: nom_span::Spanned<&'a str>,
+        args: Vec<nom_span::Spanned<&'a str>>,
+        body: nom_span::Spanned<&'a str>,
     },
     // Error, // TODO: Error recovery
 }
 
-impl std::fmt::Display for UnparsedDecl {
+impl std::fmt::Display for UnparsedDecl<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Infix { ident, fixity } => {
@@ -40,18 +59,19 @@ impl std::fmt::Display for UnparsedDecl {
                     Assoc::Right => "r",
                     Assoc::None => "",
                 };
-                write!(f, "infix{assoc} {ident} {};", fixity.prec)
+                write!(f, "infix{assoc} {} {};", ident.data(), fixity.prec)
             }
             Self::Let { ident, rhs } => {
-                write!(f, "let {ident} = {rhs} ;")
+                write!(f, "let {} = {} ;", ident.data(), rhs.data())
             }
             Self::Fn { ident, args, body } => {
                 let args = args
                     .iter()
-                    .map(Spanned::to_string)
+                    .map(nom_span::Spanned::data)
+                    .copied()
                     .collect::<Vec<_>>()
                     .join(" ");
-                write!(f, "fn {ident} {args} = {body} ;")
+                write!(f, "fn {} {args} = {} ;", ident.data(), body.data())
             }
         }
     }

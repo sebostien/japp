@@ -1,4 +1,4 @@
-use japp::parse_string;
+use japp::parse;
 
 #[derive(Debug)]
 enum ErrorCode {
@@ -21,14 +21,14 @@ fn main() -> Result<(), ErrorCode> {
     })?;
     let source = source.as_str();
 
-    match parse_string(source) {
+    match parse(source) {
         Ok(source) => {
             println!("{source:#?}\n");
             // println!("{source}");
             Ok(())
         }
         Err(e) => {
-            for report in japp::make_reports(file_name, &e) {
+            for report in japp::nom_make_reports(file_name, &e) {
                 if let Err(e) = report.print((file_name, ariadne::Source::from(source))) {
                     eprintln!("{e}");
                     return Err(ErrorCode::IoError);

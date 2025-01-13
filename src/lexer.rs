@@ -22,7 +22,6 @@ impl ExprLexer {
 
         let mut current: Option<Spanned<&'a str>> = None;
         let mut i = 0;
-        let mut k = 0;
         while i < chars.len() {
             if chars[i].is_whitespace() {
                 if let Some(token) = current.take() {
