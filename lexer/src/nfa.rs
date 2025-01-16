@@ -276,7 +276,7 @@ impl Nfa {
 impl Nfa {
     /// Check is the start of the input matches the regex.
     /// Returns the length of any match.
-    pub fn find(&self, input: &str) -> Option<usize> {
+    pub fn find<I: Iterator<Item = char>>(&self, input: I) -> Option<usize> {
         let mut current_list = Vec::with_capacity(self.transitions.len());
         let mut next_list = Vec::with_capacity(self.transitions.len());
 
@@ -286,7 +286,7 @@ impl Nfa {
         // Follow any eps-closuers at the start
         self.add_state(&mut step, &mut current_list, self.start);
 
-        for c in input.chars() {
+        for c in input {
             step.next_step(c);
 
             if self.step(&mut step, &current_list, &mut next_list) {
@@ -347,7 +347,7 @@ impl std::fmt::Display for Nfa {
 
 #[cfg(test)]
 mod tests {
-    use super::{Token, Nfa};
+    use super::{Nfa, Token};
 
     #[test]
     fn matches() {
@@ -378,13 +378,13 @@ mod tests {
         let nfa = Nfa::compile(other.into_iter()).unwrap();
         // panic!("Correct:\n\n{nfa}");
 
-        assert_eq!(None, nfa.find("l"));
-        assert_eq!(Some(3), nfa.find("let"));
-        assert_eq!(Some(2), nfa.find("fn"));
-        assert_eq!(Some(5), nfa.find("letfn"));
-        assert_eq!(Some(4), nfa.find("lefn"));
-        assert_eq!(Some(2), nfa.find("fnlet"));
-        assert_eq!(Some(5), nfa.find("letfnn"));
-        assert_eq!(Some(3), nfa.find("letffn"));
+        assert_eq!(None, nfa.find("l".chars()));
+        assert_eq!(Some(3), nfa.find("let".chars()));
+        assert_eq!(Some(2), nfa.find("fn".chars()));
+        assert_eq!(Some(5), nfa.find("letfn".chars()));
+        assert_eq!(Some(4), nfa.find("lefn".chars()));
+        assert_eq!(Some(2), nfa.find("fnlet".chars()));
+        assert_eq!(Some(5), nfa.find("letfnn".chars()));
+        assert_eq!(Some(3), nfa.find("letffn".chars()));
     }
 }

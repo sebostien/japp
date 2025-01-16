@@ -32,13 +32,13 @@ impl Lexer {
     }
 
     #[must_use]
-    pub fn find(&self, input: &str) -> Option<usize> {
+    pub fn find<I: Iterator<Item = char>>(&self, input: I) -> Option<usize> {
         self.nfa.find(input)
     }
 
     #[must_use]
     pub fn find_match<'a>(&self, input: &'a str) -> Option<&'a str> {
-        Some(&input[0..self.nfa.find(input)?])
+        Some(&input[0..self.nfa.find(input.chars())?])
     }
 }
 
