@@ -1,66 +1,128 @@
+use lexer::Lexer;
+use std::str::Chars;
+
 use crate::ast::Spanned;
 
 const DEFAULT_OPS: [&'static str; 3] = ["(", ")", ","];
 
 pub struct ExprLexer {
-    lexer: lexer::Lexer,
+    lexer: Lexer,
 }
 
-impl<'a> FromIterator<&'a str> for ExprLexer {
-    fn from_iter<I: IntoIterator<Item = &'a str>>(iter: I) -> Self {
-        let ops = iter.into_iter().chain(DEFAULT_OPS);
-        let tokens = lexer::Lexer::compile(ops);
+impl ExprLexer {
+    pub fn new<'o, OI: IntoIterator<Item = &'o str>>(operators: OI) -> Self {
+        let ops = operators.into_iter().chain(DEFAULT_OPS);
+        let lexer = Lexer::compile(ops);
 
-        Self { lexer: tokens }
+        Self { lexer }
     }
 }
 
 impl ExprLexer {
-    pub fn tokenize<'a>(&self, offset: usize, source: &'a str) -> Vec<Spanned<&'a str>> {
-        let mut tokens = vec![];
-        let chars = source.chars().collect::<Vec<_>>();
-
-        let mut current: Option<Spanned<&'a str>> = None;
-        let mut i = 0;
-        while i < chars.len() {
-            if chars[i].is_whitespace() {
-                if let Some(token) = current.take() {
-                    tokens.push(token);
-                }
-                i += 1;
-            } else if let Some(m) = self.lexer.find(&chars[i..].into_iter().collect::<String>()) {
-                if let Some(token) = current.take() {
-                    tokens.push(token);
-                }
-                tokens.push(Spanned {
-                    span: i..i + m,
-                    inner: &source[i..i + m],
-                });
-                i += m;
-            } else if let Some(prev) = current.as_mut() {
-                prev.span = prev.span.start..prev.span.end + 1;
-                prev.inner = &source[prev.span.clone()];
-                i += 1;
-            } else {
-                current = Some(Spanned {
-                    span: i..i + 1,
-                    inner: &source[i..i + 1],
-                });
-                i += 1;
-            }
+    pub fn get_tokenizer<'l, 'source>(
+        &'l self,
+        offset: usize,
+        source: &'source str,
+    ) -> Tokenizer<'l, 'source> {
+        Tokenizer {
+            lexer: &self.lexer,
+            source,
+            chars: source.chars(),
+            next: None,
+            offset,
         }
-
-        if let Some(current) = current {
-            tokens.push(Spanned {
-                span: offset + current.span.start..offset + current.span.end,
-                inner: current.inner,
-            });
-        }
-
-        tokens
     }
 }
 
+pub struct Tokenizer<'l, 'source> {
+    lexer: &'l Lexer,
+    source: &'source str,
+    chars: Chars<'source>,
+    next: Option<Spanned<&'source str>>,
+    offset: usize,
+}
+
+impl<'source> Iterator for Tokenizer<'_, 'source> {
+    type Item = Spanned<&'source str>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next.is_some() {
+            return self.next.take();
+        }
+
+        let mut no_match_end = 0;
+
+        while let Some(c) = self.chars.next() {
+            let start = self.offset;
+            let first = &self.source[0..no_match_end];
+
+            if c.is_whitespace() {
+                if no_match_end > 0 {
+                    let first = &self.source[0..no_match_end];
+
+                    self.source = &self.source[no_match_end + c.len_utf8()..];
+                    self.offset += no_match_end + c.len_utf8();
+
+                    return Some(Spanned {
+                        span: start..self.offset,
+                        inner: first,
+                    });
+                }
+
+                // Still at start, just skip the first whitespace
+                self.source = &self.source[c.len_utf8()..];
+                self.offset += c.len_utf8();
+            } else if let Some(m) = self.lexer.find(&mut self.source[no_match_end..].chars()) {
+                let middle = self.offset + no_match_end;
+                let second = &self.source[no_match_end..no_match_end + m];
+                let inner = &self.source[0..m];
+
+                self.source = &self.source[no_match_end + m..];
+                self.offset += no_match_end + m;
+
+                // Move our char iter to end of match.
+                for _ in 1..m {
+                    let _ = self.chars.next();
+                }
+
+                // If we have chars before the start of the match we
+                // need to return them first.
+                if no_match_end > 0 {
+                    self.next = Some(Spanned {
+                        span: middle..self.offset,
+                        inner: second,
+                    });
+
+                    return Some(Spanned {
+                        span: start..middle,
+                        inner: first,
+                    });
+                } else {
+                    return Some(Spanned {
+                        span: start..self.offset,
+                        inner,
+                    });
+                }
+            } else {
+                no_match_end += c.len_utf8();
+            }
+        }
+
+        if no_match_end > 0 {
+            let start = self.offset;
+            self.offset += no_match_end;
+
+            return Some(Spanned {
+                span: start..self.offset,
+                inner: &self.source[0..no_match_end],
+            });
+        }
+
+        None
+    }
+}
+
+// TODO: QuickCheck or similar
 #[cfg(test)]
 mod tests {
     use crate::ast::Spanned;
@@ -68,49 +130,99 @@ mod tests {
     use super::ExprLexer;
 
     #[test]
-    fn lexer() {
-        let lexer = ExprLexer::from_iter(["a", "aa", "abb", "bb", "bab", "b"]);
+    fn simple() {
+        let lexer = ExprLexer::new(["!", "!!"]);
+        let tokenizer = lexer.get_tokenizer(0, "! !! !!! ! !! ! ! !!");
 
         assert_eq!(
-            lexer
-                .tokenize(0, "aa a abb bab aab bb abababbbaa")
-                .into_iter()
-                .map(Spanned::take_inner)
-                .collect::<Vec<_>>(),
-            ["aa", "a", "abb", "bab", "aa", "b", "bb", "a", "bab", "abb", "b", "aa"]
-                .map(String::from)
-                .to_vec()
+            tokenizer.map(Spanned::take_inner).collect::<Vec<_>>(),
+            ["!", "!!", "!!", "!", "!", "!!", "!", "!", "!!"].to_vec()
         );
     }
 
     #[test]
     fn spans() {
-        let lexer = ExprLexer::from_iter(["a", "b", "ab"]);
+        let lexer = ExprLexer::new(["a", "b", "ab"]);
+        let mut tokenizer = lexer.get_tokenizer(0, "a ab aa aabb   b");
 
         assert_eq!(
-            lexer.tokenize(0, "aa ab b   b"),
-            [
-                Spanned {
-                    span: 0..1,
-                    inner: "a",
-                },
-                Spanned {
-                    span: 1..2,
-                    inner: "a"
-                },
-                Spanned {
-                    span: 3..5,
-                    inner: "ab"
-                },
-                Spanned {
-                    span: 6..7,
-                    inner: "b"
-                },
-                Spanned {
-                    span: 10..11,
-                    inner: "b"
-                },
-            ],
+            tokenizer.next(),
+            Some(Spanned {
+                span: 0..1,
+                inner: "a"
+            })
         );
+        assert_eq!(
+            tokenizer.next(),
+            Some(Spanned {
+                span: 2..4,
+                inner: "ab"
+            })
+        );
+        assert_eq!(
+            tokenizer.next(),
+            Some(Spanned {
+                span: 5..6,
+                inner: "a"
+            })
+        );
+        assert_eq!(
+            tokenizer.next(),
+            Some(Spanned {
+                span: 6..7,
+                inner: "a"
+            })
+        );
+        assert_eq!(
+            tokenizer.next(),
+            Some(Spanned {
+                span: 8..9,
+                inner: "a"
+            })
+        );
+        assert_eq!(
+            tokenizer.next(),
+            Some(Spanned {
+                span: 9..11,
+                inner: "ab"
+            })
+        );
+        assert_eq!(
+            tokenizer.next(),
+            Some(Spanned {
+                span: 11..12,
+                inner: "b"
+            })
+        );
+        assert_eq!(
+            tokenizer.next(),
+            Some(Spanned {
+                span: 15..16,
+                inner: "b"
+            })
+        );
+        assert_eq!(tokenizer.next(), None);
+        assert_eq!(tokenizer.next(), None);
+        assert_eq!(tokenizer.next(), None);
+    }
+
+    #[test]
+    fn other() {
+        let lexer = ExprLexer::new(["aa", "bb", "aabbcc", "c"]);
+        let mut tokenizer = lexer.get_tokenizer(0, "abc abb cc babaabbccaabbccc ");
+
+        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("ab"));
+        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("c"));
+        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("a"));
+        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("bb"));
+        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("c"));
+        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("c"));
+        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("bab"));
+        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("aabbcc"));
+        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("aabbcc"));
+        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("c"));
+        assert_eq!(tokenizer.next().map(Spanned::take_inner), None);
+        assert_eq!(tokenizer.next().map(Spanned::take_inner), None);
+        assert_eq!(tokenizer.next().map(Spanned::take_inner), None);
     }
 }

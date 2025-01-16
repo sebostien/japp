@@ -40,12 +40,7 @@ pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
         }
     }
 
-    let lexer = ExprLexer::from_iter(
-        operators
-            .iter()
-            .map(|a| *a.0)
-            .chain(["(", ")", ","].into_iter()),
-    );
+    let lexer = ExprLexer::new(operators.iter().map(|a| *a.0));
     let mut tokens = HashSet::new();
     let mut parser = ExprParser::new(operators);
     let mut parsed_program = Program {
@@ -55,7 +50,7 @@ pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
     for decl in declarations {
         match decl {
             UnparsedDecl::Let { ident, rhs } => {
-                let tokens = lexer.tokenize(rhs.byte_offset(), *rhs.data());
+                let tokens = lexer.get_tokenizer(rhs.byte_offset(), *rhs.data());
                 let expr = parser.parse(tokens).unwrap();
 
                 parsed_program.declarations.push(Decl::Let {
@@ -64,7 +59,7 @@ pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
                 });
             }
             UnparsedDecl::Fn { ident, args, body } => {
-                let body = lexer.tokenize(body.byte_offset(), *body.data());
+                let body = lexer.get_tokenizer(body.byte_offset(), *body.data());
                 let body = parser.parse(body).unwrap();
 
                 tokens.insert(*ident.data());
