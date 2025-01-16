@@ -290,7 +290,7 @@ impl Nfa {
             step.next_step(c);
 
             if self.step(&mut step, &current_list, &mut next_list) {
-                m = Some(step.consumed - 1);
+                m = Some(step.consumed - c.len_utf8());
             }
 
             std::mem::swap(&mut current_list, &mut next_list);
@@ -376,7 +376,6 @@ mod tests {
         }
 
         let nfa = Nfa::compile(other.into_iter()).unwrap();
-        // panic!("Correct:\n\n{nfa}");
 
         assert_eq!(None, nfa.find("l".chars()));
         assert_eq!(Some(3), nfa.find("let".chars()));
@@ -386,5 +385,39 @@ mod tests {
         assert_eq!(Some(2), nfa.find("fnlet".chars()));
         assert_eq!(Some(5), nfa.find("letfnn".chars()));
         assert_eq!(Some(3), nfa.find("letffn".chars()));
+    }
+
+    #[test]
+    fn ut8() {
+        let mut tokens = vec!["٨", "٧", "൬ጶ", "Ꮗ൬ጶ", "🝃🝅🝆🝉🝊"]
+            .into_iter()
+            .map(|x| {
+                let mut out = vec![];
+                let mut x = x.chars().map(Token::Char);
+                out.push(x.next().unwrap());
+                for c in x {
+                    out.push(c);
+                    out.push(Token::Concat);
+                }
+
+                out
+            })
+            .collect::<Vec<_>>();
+
+        let mut other = vec![];
+
+        other.append(&mut tokens.pop().unwrap());
+
+        while let Some(mut tokens) = tokens.pop() {
+            other.append(&mut tokens);
+            other.push(Token::Union);
+        }
+
+        let nfa = Nfa::compile(other.into_iter()).unwrap();
+
+        assert_eq!(None, nfa.find("Ꮗ൬".chars()));
+        assert_eq!(Some("٨".len()), nfa.find("٨🝃🝅🝆🝉🝊".chars()));
+        assert_eq!(Some("Ꮗ൬ጶ".len()), nfa.find("Ꮗ൬ጶ".chars()));
+        assert_eq!(Some("൬ጶ".len()), nfa.find("൬ጶ൬ጶ൬ጶ".chars()));
     }
 }
