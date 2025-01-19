@@ -4,12 +4,12 @@ use nom::Finish;
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
-mod ast;
+pub mod ast;
 mod expr_parser;
 mod lexer;
 mod parser;
 
-use ast::{Decl, Fixity, Program, UnparsedDecl};
+pub use ast::{Decl, Fixity, Program, UnparsedDecl};
 use expr_parser::ExprParser;
 use parser::parse_program;
 

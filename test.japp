@@ -1,0 +1,11 @@
+
+infixl + 2;
+infixl - 2;
+infixl * 3;
+infixl / 3;
+infixr ^ 4;
+infix  == 1;
+
+fn testing a = a * 2 + 2132 == a + a + 2132 ;
+
+fn main = console.log( testing(0) );

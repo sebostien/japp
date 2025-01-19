@@ -24,6 +24,7 @@ fn main() -> Result<(), ErrorCode> {
     match parse(source) {
         Ok(source) => {
             println!("{source:#?}\n");
+            std::fs::write("test.js", transpiler::transpile(source)).unwrap();
             // println!("{source}");
             Ok(())
         }
