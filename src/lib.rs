@@ -37,6 +37,19 @@ pub fn make_parse_reports<'f>(
                             .with_message("Fixity later defined here"),
                     );
                 }
+                ErrorKind::ExprParser { error: kind } => {
+                    println!("{:?}", kind);
+                    // TODO: Offset not working?
+                    report = report.with_label(
+                        Label::new((file_name, error.span.clone()))
+                            .with_message(format!("{kind:?}")),
+                    );
+                }
+                ErrorKind::Mismatched {
+                    start,
+                    expected,
+                    extra_info,
+                } => todo!(),
             };
 
             report.finish()

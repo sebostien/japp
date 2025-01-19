@@ -51,7 +51,7 @@ pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
         match decl {
             UnparsedDecl::Let { ident, rhs } => {
                 let tokens = lexer.get_tokenizer(rhs.byte_offset(), *rhs.data());
-                let expr = parser.parse(tokens).unwrap();
+                let expr = parser.parse(tokens).map_err(|e| vec![e])?;
 
                 parsed_program.declarations.push(Decl::Let {
                     ident: *ident.data(),
@@ -59,8 +59,8 @@ pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
                 });
             }
             UnparsedDecl::Fn { ident, args, body } => {
-                let body = lexer.get_tokenizer(body.byte_offset(), *body.data());
-                let body = parser.parse(body).unwrap();
+                let body_tokens = lexer.get_tokenizer(body.byte_offset(), *body.data());
+                let body = parser.parse(body_tokens).map_err(|e| vec![e])?;
 
                 tokens.insert(*ident.data());
 

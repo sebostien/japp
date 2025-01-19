@@ -125,104 +125,70 @@ impl<'source> Iterator for Tokenizer<'_, 'source> {
 // TODO: QuickCheck or similar
 #[cfg(test)]
 mod tests {
+    use std::ops::Range;
+
+    use rand::Rng;
+
     use crate::ast::Spanned;
 
     use super::ExprLexer;
 
-    #[test]
-    fn simple() {
-        let lexer = ExprLexer::new(["!", "!!"]);
-        let tokenizer = lexer.get_tokenizer(0, "! !! !!! ! !! ! ! !!");
+    fn test_lexer(tokens: &[&str], source: &str, expected: &[(Range<usize>, &str)]) {
+        println!("Lexing:\n\t'{source}'\nWith tokens:\n\t{tokens:?}");
 
-        assert_eq!(
-            tokenizer.map(Spanned::take_inner).collect::<Vec<_>>(),
-            ["!", "!!", "!!", "!", "!", "!!", "!", "!", "!!"].to_vec()
+        let offset = rand::thread_rng().gen_range(0..100_000);
+
+        let lexer = ExprLexer::new(tokens.into_iter().map(|s| *s));
+        let mut tokenizer = lexer.get_tokenizer(offset, source);
+
+        for (span, inner) in expected {
+            assert_eq!(
+                tokenizer.next(),
+                Some(Spanned {
+                    span: offset + span.start..offset + span.end,
+                    inner: *inner
+                })
+            );
+        }
+
+        assert!(tokenizer.next().is_none());
+    }
+
+    #[test]
+    fn simple_tokens() {
+        test_lexer(
+            &["a", "b", "ab"],
+            "a ab aa aabb  \n b",
+            &[
+                (0..1, "a"),
+                (2..4, "ab"),
+                (5..6, "a"),
+                (6..7, "a"),
+                (8..9, "a"),
+                (9..11, "ab"),
+                (11..12, "b"),
+                (16..17, "b"),
+            ],
         );
     }
 
     #[test]
-    fn spans() {
-        let lexer = ExprLexer::new(["a", "b", "ab"]);
-        let mut tokenizer = lexer.get_tokenizer(0, "a ab aa aabb   b");
-
-        assert_eq!(
-            tokenizer.next(),
-            Some(Spanned {
-                span: 0..1,
-                inner: "a"
-            })
+    fn longer_tokens() {
+        test_lexer(
+            &["aa", "bb", "aabbcc", "c"],
+            "\n\n\t   abc abb cc babaabbccaabbccc   \n",
+            &[
+                (6..8, "ab"),
+                (8..9, "c"),
+                (10..11, "a"),
+                (11..13, "bb"),
+                (14..15, "c"),
+                (15..16, "c"),
+                (17..20, "bab"),
+                (20..26, "aabbcc"),
+                (26..32, "aabbcc"),
+                (32..33, "c"),
+            ],
         );
-        assert_eq!(
-            tokenizer.next(),
-            Some(Spanned {
-                span: 2..4,
-                inner: "ab"
-            })
-        );
-        assert_eq!(
-            tokenizer.next(),
-            Some(Spanned {
-                span: 5..6,
-                inner: "a"
-            })
-        );
-        assert_eq!(
-            tokenizer.next(),
-            Some(Spanned {
-                span: 6..7,
-                inner: "a"
-            })
-        );
-        assert_eq!(
-            tokenizer.next(),
-            Some(Spanned {
-                span: 8..9,
-                inner: "a"
-            })
-        );
-        assert_eq!(
-            tokenizer.next(),
-            Some(Spanned {
-                span: 9..11,
-                inner: "ab"
-            })
-        );
-        assert_eq!(
-            tokenizer.next(),
-            Some(Spanned {
-                span: 11..12,
-                inner: "b"
-            })
-        );
-        assert_eq!(
-            tokenizer.next(),
-            Some(Spanned {
-                span: 15..16,
-                inner: "b"
-            })
-        );
-        assert_eq!(tokenizer.next(), None);
-        assert_eq!(tokenizer.next(), None);
-        assert_eq!(tokenizer.next(), None);
-    }
-
-    #[test]
-    fn other() {
-        let lexer = ExprLexer::new(["aa", "bb", "aabbcc", "c"]);
-        let mut tokenizer = lexer.get_tokenizer(0, "abc abb cc babaabbccaabbccc ");
-
-        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("ab"));
-        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("c"));
-        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("a"));
-        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("bb"));
-        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("c"));
-        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("c"));
-        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("bab"));
-        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("aabbcc"));
-        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("aabbcc"));
-        assert_eq!(tokenizer.next().map(Spanned::take_inner), Some("c"));
-        assert_eq!(tokenizer.next().map(Spanned::take_inner), None);
-        assert_eq!(tokenizer.next().map(Spanned::take_inner), None);
-        assert_eq!(tokenizer.next().map(Spanned::take_inner), None);
     }
 }

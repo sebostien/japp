@@ -2,6 +2,7 @@ use std::ops::Range;
 use std::{collections::HashMap, iter::Peekable};
 
 use crate::ast::{Assoc, Expr, Fixity, Lit, Spanned};
+use crate::{ErrorKind, ParseError};
 
 pub struct ExprParser<'ops> {
     operators: HashMap<&'ops str, (Range<usize>, Fixity)>,
@@ -13,14 +14,22 @@ impl<'ops> ExprParser<'ops> {
     }
 
     /// Parse an expression based on the operators in `self`.
-    pub fn parse<'a, I: IntoIterator<Item = Spanned<&'a str>>>(
+    pub fn parse<'source, I: IntoIterator<Item = Spanned<&'source str>>>(
         &mut self,
         source: I,
-    ) -> Result<Expr<'a>, String> {
+    ) -> Result<Expr<'source>, ParseError<'source>> {
         let mut source = source.into_iter().peekable();
         let expr = self.parse_expr(&mut source, 0)?;
+
         if let Some(token) = source.next() {
-            Err(format!("Unexpected token '{:?}'", token))
+            println!("{:?} {:?}", expr, token);
+            Err(ParseError {
+                span: token.span,
+                error: ErrorKind::UnexpectedToken {
+                    found: token.inner,
+                    expected: ";",
+                },
+            })
         } else {
             Ok(expr)
         }
@@ -31,7 +40,7 @@ impl<'ops> ExprParser<'ops> {
         &mut self,
         tokens: &mut Peekable<I>,
         precedence: usize,
-    ) -> Result<Expr<'source>, String>
+    ) -> Result<Expr<'source>, ParseError<'source>>
     where
         I: Iterator<Item = Spanned<&'source str>>,
     {
@@ -75,7 +84,10 @@ impl<'ops> ExprParser<'ops> {
         Ok(lhs)
     }
 
-    fn primary<'source, I>(&mut self, tokens: &mut Peekable<I>) -> Result<Expr<'source>, String>
+    fn primary<'source, I>(
+        &mut self,
+        tokens: &mut Peekable<I>,
+    ) -> Result<Expr<'source>, ParseError<'source>>
     where
         I: Iterator<Item = Spanned<&'source str>>,
     {
@@ -83,8 +95,18 @@ impl<'ops> ExprParser<'ops> {
 
         if token.inner == "(" {
             let expr = self.parse_expr(tokens, 0)?;
-            if tokens.next().as_ref().map(Spanned::inner) != Some(&")") {
-                return Err("Mismatched parens".to_string());
+            let cparen = tokens.next();
+            if let Some(cparen) = cparen {
+                if cparen.inner != ")" {
+                    return Err(ParseError {
+                        span: cparen.span,
+                        error: ErrorKind::UnexpectedToken {
+                            found: cparen.inner,
+                            expected: ")",
+                        },
+                    });
+                }
+                // return Err("Mismatched parens".to_string());
             }
             Ok(expr)
         } else {
@@ -105,19 +127,28 @@ impl<'ops> ExprParser<'ops> {
         &mut self,
         tokens: &mut Peekable<I>,
         ident: Spanned<&'source str>,
-    ) -> Result<Expr<'source>, String>
+    ) -> Result<Expr<'source>, ParseError<'source>>
     where
         I: Iterator<Item = Spanned<&'source str>>,
     {
+        let paren_start = tokens
+            .next()
+            .expect("`parse_f_call` was called without '(' as the next token"); // Consume '('
+
         let mut args = vec![];
-        tokens.next(); // Consume '('
 
         while let Some(token) = tokens.peek().cloned() {
             if token.inner == ")" {
                 tokens.next(); // Consume ')'
                 return Ok(Expr::FCall { ident, args });
             } else if token.inner == "," {
-                return Err(format!("Unexpected token ','"));
+                return Err(ParseError {
+                    span: token.span,
+                    error: ErrorKind::UnexpectedToken {
+                        found: token.inner,
+                        expected: "Expression",
+                    },
+                });
             }
 
             args.push(self.parse_expr(tokens, 0)?);
@@ -126,7 +157,14 @@ impl<'ops> ExprParser<'ops> {
             }
         }
 
-        Err("No matching ')' after function call".to_string())
+        Err(ParseError {
+            span: paren_start.span,
+            error: ErrorKind::Mismatched {
+                start: paren_start.inner,
+                expected: None,
+                extra_info: "This '(' was not closed",
+            },
+        })
     }
 }
 

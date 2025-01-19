@@ -346,6 +346,7 @@ dependencies = [
  "lexer",
  "nom",
  "nom-span",
+ "rand",
 ]
 
 [[package]]

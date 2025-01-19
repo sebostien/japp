@@ -6,7 +6,7 @@ use nom::multi::many0;
 use nom::Parser;
 use std::ops::Range;
 
-use crate::ast::{Assoc, Fixity, UnparsedDecl, UnparsedProgram};
+use crate::ast::{Assoc, Fixity, Spanned, UnparsedDecl, UnparsedProgram};
 
 #[derive(Debug)]
 pub struct ParseError<'source> {
@@ -21,10 +21,18 @@ pub enum ErrorKind<'source> {
     InvalidPrecedence(String),
     UnexpectedToken {
         found: &'source str,
-        expected: &'static str,
+        expected: &'source str,
     },
     DuplicateFixity {
         other: Range<usize>,
+    },
+    ExprParser {
+        error: String,
+    },
+    Mismatched {
+        start: &'source str,
+        expected: Option<Spanned<&'source str>>,
+        extra_info: &'source str,
     },
 }
 
