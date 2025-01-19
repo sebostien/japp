@@ -1,4 +1,5 @@
-use super::{Lit, Spanned};
+use super::Lit;
+use japp_util::Spanned;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr<'a> {
@@ -77,7 +78,7 @@ impl std::fmt::Display for Expr<'_> {
                 write!(f, "{ident} (")?;
 
                 let last = args.len().wrapping_sub(1);
-                for (i, arg) in args.into_iter().enumerate() {
+                for (i, arg) in args.iter().enumerate() {
                     if i == last {
                         write!(f, " {arg}")?;
                     } else {

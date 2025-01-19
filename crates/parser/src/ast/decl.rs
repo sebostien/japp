@@ -1,4 +1,5 @@
-use super::{Assoc, Expr, Fixity, Spanned};
+use super::{Assoc, Expr, Fixity};
+use japp_util::Spanned;
 
 #[derive(Debug)]
 pub enum Decl<'a> {

@@ -256,6 +256,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "japp_util"
+version = "0.1.0"
+
+[[package]]
 name = "js-sys"
 version = "0.3.76"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -270,6 +274,7 @@ name = "lexer"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "japp_util",
  "rand",
 ]
 
@@ -343,6 +348,7 @@ checksum = "b410bbe7e14ab526a0e86877eb47c6996a2bd7746f027ba551028c925390e4e9"
 name = "parser"
 version = "0.1.0"
 dependencies = [
+ "japp_util",
  "lexer",
  "nom",
  "nom-span",

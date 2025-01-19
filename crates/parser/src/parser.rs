@@ -1,3 +1,4 @@
+use japp_util::Spanned;
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_till};
 use nom::character::complete::{digit1, multispace1, space1};
@@ -6,7 +7,7 @@ use nom::multi::many0;
 use nom::Parser;
 use std::ops::Range;
 
-use crate::ast::{Assoc, Fixity, Spanned, UnparsedDecl, UnparsedProgram};
+use crate::ast::{Assoc, Fixity, UnparsedDecl, UnparsedProgram};
 
 #[derive(Debug)]
 pub struct ParseError<'source> {
@@ -60,7 +61,7 @@ impl<'a> nom::error::ParseError<Source<'a>> for ParseError<'_> {
 type Source<'a> = nom_span::Spanned<&'a str>;
 type IResult<'a, O> = nom::IResult<Source<'a>, O, ParseError<'a>>;
 
-pub fn convert_nom_error<'a, O>(value: nom::IResult<Source<'a>, O>) -> IResult<'a, O>
+pub fn convert_nom_error<O>(value: nom::IResult<Source, O>) -> IResult<O>
 where
     O: std::fmt::Debug,
 {
@@ -82,14 +83,14 @@ where
     }
 }
 
-fn spaces<'a>(input: Source<'a>) -> Source<'a> {
+fn spaces(input: Source) -> Source {
     take_till::<_, _, ()>(|c: char| !c.is_whitespace())(input)
         .map(|(input, _)| input)
         .unwrap_or(input)
 }
 
 /// Any utf-8 (without whitespace) sequence not starting with an ascii digit.
-fn ident<'a>(input: Source<'a>) -> IResult<'a, Source<'a>> {
+fn ident(input: Source) -> IResult<Source> {
     let input = spaces(input);
 
     let ident_start = input.byte_offset();
@@ -129,13 +130,13 @@ fn ident<'a>(input: Source<'a>) -> IResult<'a, Source<'a>> {
     }
 }
 
-fn unparsed_expr<'a>(input: Source<'a>) -> IResult<'a, Source<'a>> {
+fn unparsed_expr(input: Source) -> IResult<Source> {
     let input = spaces(input);
     let (input, expr) = convert_nom_error(take_till(|c| c == ';')(input))?;
     Ok((input, expr))
 }
 
-fn infix_decl<'a>(input: Source<'a>) -> IResult<'a, UnparsedDecl> {
+fn infix_decl(input: Source) -> IResult<UnparsedDecl> {
     let input = spaces(input);
     let (input, assoc) = alt((
         tag("infixl").map(|_| Assoc::Left),
@@ -166,7 +167,7 @@ fn infix_decl<'a>(input: Source<'a>) -> IResult<'a, UnparsedDecl> {
     ))
 }
 
-fn let_decl<'a>(input: Source<'a>) -> IResult<'a, UnparsedDecl> {
+fn let_decl(input: Source) -> IResult<UnparsedDecl> {
     let input = spaces(input);
     let (input, _) = tag("let")(input)?;
     let input = spaces(input);
@@ -183,7 +184,7 @@ fn let_decl<'a>(input: Source<'a>) -> IResult<'a, UnparsedDecl> {
     Ok((input, UnparsedDecl::Let { ident, rhs: expr }))
 }
 
-fn fn_decl<'a>(input: Source<'a>) -> IResult<'a, UnparsedDecl> {
+fn fn_decl(input: Source) -> IResult<UnparsedDecl> {
     let input = spaces(input);
     let (input, _) = tag("fn")(input)?;
     let (input, _) = space1(input)?;
@@ -205,11 +206,11 @@ fn fn_decl<'a>(input: Source<'a>) -> IResult<'a, UnparsedDecl> {
     ))
 }
 
-fn decl<'a>(input: Source<'a>) -> IResult<'a, UnparsedDecl> {
+fn decl(input: Source) -> IResult<UnparsedDecl> {
     alt((infix_decl, let_decl, fn_decl))(input)
 }
 
-pub fn parse_program<'a>(input: &'a str) -> IResult<'a, UnparsedProgram> {
+pub fn parse_program(input: &str) -> IResult<UnparsedProgram> {
     let input = Source::new_for_ut8(input);
 
     let (input, decls) = many0(decl)(input)?;

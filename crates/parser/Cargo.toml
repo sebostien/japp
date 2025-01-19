@@ -7,6 +7,7 @@ edition = "2021"
 nom = { workspace = true }
 nom-span = { workspace = true }
 lexer = { workspace = true }
+japp_util = { workspace = true }
 
 [dev-dependencies]
 rand = "0.8.5"

@@ -38,18 +38,30 @@ pub fn make_parse_reports<'f>(
                     );
                 }
                 ErrorKind::ExprParser { error: kind } => {
-                    println!("{:?}", kind);
-                    // TODO: Offset not working?
                     report = report.with_label(
                         Label::new((file_name, error.span.clone()))
                             .with_message(format!("{kind:?}")),
                     );
                 }
                 ErrorKind::Mismatched {
-                    start,
+                    start: _,
                     expected,
                     extra_info,
-                } => todo!(),
+                } => {
+                    report = report.with_label(
+                        Label::new((file_name, error.span.clone())).with_message(extra_info),
+                    );
+
+                    if let Some(expected) = expected {
+                        // TODO: Fix error
+                        report = report.with_label(
+                            Label::new((file_name, expected.span.clone())).with_message(format!(
+                                "Expected here::: {:?} ::: {}",
+                                expected.inner, extra_info
+                            )),
+                        );
+                    }
+                }
             };
 
             report.finish()

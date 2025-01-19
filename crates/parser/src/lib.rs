@@ -1,3 +1,4 @@
+use japp_util::Spanned;
 use lexer::ExprLexer;
 use nom::Finish;
 use std::collections::{HashMap, HashSet};
@@ -8,7 +9,7 @@ mod expr_parser;
 mod lexer;
 mod parser;
 
-use ast::{Decl, Fixity, Program, Spanned, UnparsedDecl};
+use ast::{Decl, Fixity, Program, UnparsedDecl};
 use expr_parser::ExprParser;
 use parser::parse_program;
 
@@ -26,7 +27,7 @@ pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
             UnparsedDecl::Infix { ident, fixity } => {
                 let this_span = ident.byte_offset()..ident.len();
                 if let Some((other_span, _)) =
-                    operators.insert(*ident.data(), (this_span.clone(), fixity))
+                    operators.insert(ident.data(), (this_span.clone(), fixity))
                 {
                     errors.push(ParseError {
                         span: this_span,
@@ -50,16 +51,16 @@ pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
     for decl in declarations {
         match decl {
             UnparsedDecl::Let { ident, rhs } => {
-                let tokens = lexer.get_tokenizer(rhs.byte_offset(), *rhs.data());
+                let tokens = lexer.scan(rhs.byte_offset(), rhs.data());
                 let expr = parser.parse(tokens).map_err(|e| vec![e])?;
 
                 parsed_program.declarations.push(Decl::Let {
-                    ident: *ident.data(),
+                    ident: ident.data(),
                     rhs: expr,
                 });
             }
             UnparsedDecl::Fn { ident, args, body } => {
-                let body_tokens = lexer.get_tokenizer(body.byte_offset(), *body.data());
+                let body_tokens = lexer.scan(body.byte_offset(), body.data());
                 let body = parser.parse(body_tokens).map_err(|e| vec![e])?;
 
                 tokens.insert(*ident.data());

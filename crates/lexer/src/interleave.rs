@@ -47,7 +47,7 @@ where
     B: Iterator<Item = T>,
 {
     /// Interleaves `self` and `other`.
-    ///  
+    ///
     /// First produces two items from `self`, then `1` out of other.
     /// After this they are mixed.
     fn interleave(self, other: B) -> Interleaved<A, B> {

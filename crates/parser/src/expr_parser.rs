@@ -1,7 +1,8 @@
+use japp_util::Spanned;
 use std::ops::Range;
 use std::{collections::HashMap, iter::Peekable};
 
-use crate::ast::{Assoc, Expr, Fixity, Lit, Spanned};
+use crate::ast::{Assoc, Expr, Fixity, Lit};
 use crate::{ErrorKind, ParseError};
 
 pub struct ExprParser<'ops> {
@@ -170,9 +171,10 @@ impl<'ops> ExprParser<'ops> {
 
 #[cfg(test)]
 mod tests {
+    use japp_util::Spanned;
     use std::collections::HashMap;
 
-    use crate::ast::{Assoc, Expr, Fixity, Lit, Spanned};
+    use crate::ast::{Assoc, Expr, Fixity, Lit};
     use crate::expr_parser::ExprParser;
 
     #[test]
@@ -242,7 +244,7 @@ mod tests {
         let lexer = crate::lexer::ExprLexer::new(ops.keys().copied());
 
         let source = "(2*2+2*3^2/(18))+2^3^2*11+(2-3/3)==add(5638,1)-1";
-        let tokens = lexer.get_tokenizer(0, source);
+        let tokens = lexer.scan(0, source);
 
         assert_eq!(
             Ok(Lit::Bool(true)),
@@ -265,7 +267,7 @@ mod tests {
         let lexer = crate::lexer::ExprLexer::new(ops.keys().copied());
 
         let source = "add(2*2, 2)";
-        let tokens = lexer.get_tokenizer(0, source);
+        let tokens = lexer.scan(0, source);
 
         assert_eq!(
             Expr::FCall {
@@ -303,11 +305,11 @@ mod tests {
         let lexer = crate::lexer::ExprLexer::new([]);
 
         let source = "add(2,,3)";
-        let tokens = lexer.get_tokenizer(0, source);
+        let tokens = lexer.scan(0, source);
         assert!(ExprParser::new(HashMap::default()).parse(tokens).is_err());
 
         let source = "add(2,3,)";
-        let tokens = lexer.get_tokenizer(0, source);
+        let tokens = lexer.scan(0, source);
         assert!(ExprParser::new(HashMap::default()).parse(tokens).is_ok());
     }
 }

@@ -4,14 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = ["lexer", "parser"]
+members = ["crates/*"]
 
 [workspace.dependencies]
-lexer = { path = "./lexer/" }
-parser = { path = "./parser/" }
+lexer = { path = "./crates/lexer/" }
+parser = { path = "./crates/parser/" }
+japp_util = { path = "./crates/japp_util//" }
 nom = "7.1.3"
 nom-span = "0.1.2"
+criterion = { version = "0.5.1", features = ["html_reports"] }
+rand = "0.8.5"
 
 [dependencies]
 ariadne = "0.5.0"
-parser = { path = "./parser/" }
+parser = { path = "./crates/parser/" }

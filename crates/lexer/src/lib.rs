@@ -1,40 +1,61 @@
-use lexer::Lexer;
+mod interleave;
+mod nfa;
+mod state;
+mod token;
+
+use japp_util::Spanned;
 use std::str::Chars;
 
-use crate::ast::Spanned;
+use interleave::Interleave;
+use nfa::Nfa;
+use token::Token;
 
-const DEFAULT_OPS: [&'static str; 3] = ["(", ")", ","];
-
-pub struct ExprLexer {
-    lexer: Lexer,
+pub struct Lexer {
+    nfa: Nfa,
 }
 
-impl ExprLexer {
-    pub fn new<'o, OI: IntoIterator<Item = &'o str>>(operators: OI) -> Self {
-        let ops = operators.into_iter().chain(DEFAULT_OPS);
-        let lexer = Lexer::compile(ops);
+impl Lexer {
+    pub fn compile<I: IntoIterator<Item = S>, S: AsRef<str>>(symbols: I) -> Self {
+        let symbols = symbols
+            .into_iter()
+            .map(|symbol| {
+                symbol
+                    .as_ref()
+                    .chars()
+                    .map(Token::Char)
+                    .interleave((0..).map(|_| Token::Concat))
+                    .collect()
+            })
+            .interleave((0..).map(|_| vec![Token::Union]))
+            .flatten();
 
-        Self { lexer }
+        Self {
+            nfa: Nfa::compile(symbols).unwrap(),
+        }
     }
-}
 
-impl ExprLexer {
-    pub fn get_tokenizer<'l, 'source>(
-        &'l self,
-        offset: usize,
-        source: &'source str,
-    ) -> Tokenizer<'l, 'source> {
-        Tokenizer {
-            lexer: &self.lexer,
-            source,
-            chars: source.chars(),
+    #[must_use]
+    pub fn find<I: Iterator<Item = char>>(&self, input: I) -> Option<usize> {
+        self.nfa.find(input)
+    }
+
+    #[must_use]
+    pub fn find_match<'a>(&self, input: &'a str) -> Option<&'a str> {
+        Some(&input[0..self.nfa.find(input.chars())?])
+    }
+
+    pub fn scan<'source>(&self, offset: usize, input: &'source str) -> Scanner<'_, 'source> {
+        Scanner {
+            lexer: self,
+            source: input,
+            chars: input.chars(),
             next: None,
             offset,
         }
     }
 }
 
-pub struct Tokenizer<'l, 'source> {
+pub struct Scanner<'l, 'source> {
     lexer: &'l Lexer,
     source: &'source str,
     chars: Chars<'source>,
@@ -42,7 +63,7 @@ pub struct Tokenizer<'l, 'source> {
     offset: usize,
 }
 
-impl<'source> Iterator for Tokenizer<'_, 'source> {
+impl<'source> Iterator for Scanner<'_, 'source> {
     type Item = Spanned<&'source str>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -122,36 +143,80 @@ impl<'source> Iterator for Tokenizer<'_, 'source> {
     }
 }
 
+#[cfg(test)]
+impl std::fmt::Display for Lexer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.nfa.fmt(f)
+    }
+}
+
 // TODO: QuickCheck or similar
 #[cfg(test)]
 mod tests {
-    use std::ops::Range;
-
     use rand::Rng;
 
-    use crate::ast::Spanned;
+    use crate::Lexer;
+    use std::ops::Range;
 
-    use super::ExprLexer;
+    use super::*;
+
+    #[test]
+    fn lexer() {
+        let nfa = Lexer::compile(&["let", "fn", "lefn", "letfn"]);
+
+        assert_eq!(None, nfa.find_match("l"));
+        assert_eq!(Some("let"), nfa.find_match("let"));
+        assert_eq!(Some("fn"), nfa.find_match("fn"));
+        assert_eq!(Some("letfn"), nfa.find_match("letfn"));
+        assert_eq!(Some("lefn"), nfa.find_match("lefn"));
+        assert_eq!(Some("fn"), nfa.find_match("fnlet"));
+        assert_eq!(Some("letfn"), nfa.find_match("letfnn"));
+        assert_eq!(Some("let"), nfa.find_match("letffn"));
+    }
+
+    #[test]
+    fn longer() {
+        let symbols = &[
+            "struct",
+            "fntype",
+            "fn",
+            "type",
+            "enum",
+            "letfn",
+            "let",
+            "structure",
+        ];
+        let lexer = Lexer::compile(symbols);
+        let input = "".split("struct let fn type enum letfn fntype structure structurize fnlet typingenum hello world").collect::<Vec<_>>();
+
+        for input in input {
+            if let Some(a) = lexer.find_match(input) {
+                assert!(symbols.contains(&a));
+            } else {
+                assert!(!symbols.contains(&input));
+            }
+        }
+    }
 
     fn test_lexer(tokens: &[&str], source: &str, expected: &[(Range<usize>, &str)]) {
-        println!("Lexing:\n\t'{source}'\nWith tokens:\n\t{tokens:?}");
-
         let offset = rand::thread_rng().gen_range(0..100_000);
 
-        let lexer = ExprLexer::new(tokens.into_iter().map(|s| *s));
-        let mut tokenizer = lexer.get_tokenizer(offset, source);
+        println!("Lexing:\n\t'{source}'\nWith tokens:\n\t{tokens:?}");
 
-        for (span, inner) in expected {
+        let lexer = Lexer::compile(tokens.into_iter().map(|s| *s));
+        let mut scanner = lexer.scan(offset, source);
+
+        for (span, inner) in expected.into_iter().cloned() {
             assert_eq!(
-                tokenizer.next(),
+                scanner.next(),
                 Some(Spanned {
                     span: offset + span.start..offset + span.end,
-                    inner: *inner
+                    inner
                 })
             );
         }
 
-        assert!(tokenizer.next().is_none());
+        assert!(scanner.next().is_none());
     }
 
     #[test]
