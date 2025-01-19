@@ -1,4 +1,4 @@
-use super::{Assoc, Expr, Fixity};
+use super::{Assoc, Expr, Fixity, Lit};
 use japp_util::Spanned;
 
 #[derive(Debug)]
@@ -9,9 +9,14 @@ pub enum Decl<'a> {
     },
     Fn {
         ident: &'a str,
-        args: Vec<Spanned<&'a str>>,
-        body: Expr<'a>,
+        rows: Vec<FnRow<'a>>,
     },
+}
+
+#[derive(Debug)]
+pub struct FnRow<'a> {
+    pub args: Vec<Spanned<Lit<'a>>>,
+    pub body: Expr<'a>,
 }
 
 impl std::fmt::Display for Decl<'_> {
@@ -20,14 +25,19 @@ impl std::fmt::Display for Decl<'_> {
             Self::Let { ident, rhs: expr } => {
                 write!(f, "let {ident} = {expr} ;")
             }
-            Self::Fn { ident, args, body } => {
-                let args = args
-                    .iter()
-                    .map(Spanned::inner)
-                    .copied()
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                write!(f, "fn {ident} {args} = {body} ;")
+            Self::Fn { ident, rows } => {
+                for FnRow { args, body } in rows {
+                    let args = args
+                        .iter()
+                        .map(Spanned::inner)
+                        .map(Lit::to_string)
+                        .collect::<Vec<_>>()
+                        .join(" ");
+
+                    write!(f, "fn {ident} {args} = {body} ;")?;
+                }
+
+                Ok(())
             }
         }
     }

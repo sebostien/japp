@@ -1,3 +1,4 @@
+use ast::Lit;
 use japp_util::Spanned;
 use lexer::ExprLexer;
 use nom::Finish;
@@ -9,7 +10,7 @@ mod expr_parser;
 mod lexer;
 mod parser;
 
-pub use ast::{Decl, Fixity, Program, UnparsedDecl};
+pub use ast::{Decl, Fixity, FnRow, Program, UnparsedDecl};
 use expr_parser::ExprParser;
 use parser::parse_program;
 
@@ -45,7 +46,7 @@ pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
     let mut tokens = HashSet::new();
     let mut parser = ExprParser::new(operators);
     let mut parsed_program = Program {
-        declarations: vec![],
+        declarations: HashMap::new(),
     };
 
     for decl in declarations {
@@ -54,28 +55,45 @@ pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
                 let tokens = lexer.scan(rhs.byte_offset(), rhs.data());
                 let expr = parser.parse(tokens).map_err(|e| vec![e])?;
 
-                parsed_program.declarations.push(Decl::Let {
-                    ident: ident.data(),
-                    rhs: expr,
-                });
+                parsed_program.declarations.insert(
+                    ident.data(),
+                    Decl::Let {
+                        ident: ident.data(),
+                        rhs: expr,
+                    },
+                );
             }
             UnparsedDecl::Fn { ident, args, body } => {
                 let body_tokens = lexer.scan(body.byte_offset(), body.data());
                 let body = parser.parse(body_tokens).map_err(|e| vec![e])?;
 
                 tokens.insert(*ident.data());
+                let mut prev =
+                    parsed_program
+                        .declarations
+                        .entry(ident.data())
+                        .or_insert(Decl::Fn {
+                            ident: ident.data(),
+                            rows: vec![],
+                        });
 
-                parsed_program.declarations.push(Decl::Fn {
-                    ident: ident.data(),
-                    args: args
-                        .into_iter()
-                        .map(|arg| Spanned {
-                            span: arg.byte_offset()..arg.data().len(),
-                            inner: *arg.data(),
-                        })
-                        .collect(),
-                    body,
-                });
+                match prev {
+                    Decl::Let { .. } => panic!(),
+                    Decl::Fn {
+                        ident: _,
+                        ref mut rows,
+                    } => rows.push(FnRow {
+                        args: args
+                            .into_iter()
+                            .map(|arg| Spanned {
+                                span: arg.byte_offset()..arg.data().len(),
+                                inner: Lit::from(*arg.data()),
+                            })
+                            .collect(),
+
+                        body,
+                    }),
+                };
             }
             UnparsedDecl::Infix { .. } => unreachable!(),
         }
@@ -114,6 +132,30 @@ mod tests {
                 "let b = ( a + b ) ;",
                 "fn add x y = ( x + y ) ;",
                 "let zz = add ( ( a * b ) , b ) ;",
+            ]
+            .join("\n")
+        );
+    }
+
+    #[test]
+    fn t_pattern_match() {
+        let source = r#"
+            infix - 1 ;
+            infix * 2 ;
+
+            fn fac 0 = 1 ;
+            fn fac n = n * fac(n - 1);
+
+            fn main = fac(5) ;
+        "#;
+        let ast = parse(source).unwrap();
+
+        assert_eq!(
+            ast.to_string(),
+            vec![
+                "fn fac 0 = 1 ;",
+                "fn fac n = ( n * fac ( ( n - 1 ) ) ) ;",
+                "fn main  = fac ( 5 ) ;",
             ]
             .join("\n")
         );

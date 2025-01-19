@@ -3,20 +3,22 @@ mod expr;
 mod fixity;
 mod lit;
 
-pub use decl::{Decl, UnparsedDecl};
+use std::collections::HashMap;
+
+pub use decl::{Decl, UnparsedDecl, FnRow};
 pub use expr::Expr;
 pub use fixity::{Assoc, Fixity};
 pub use lit::Lit;
 
 #[derive(Debug)]
 pub struct Program<'a> {
-    pub declarations: Vec<Decl<'a>>,
+    pub declarations: HashMap<&'a str, Decl<'a>>,
 }
 
 impl std::fmt::Display for Program<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.declarations
-            .iter()
+            .values()
             .map(|e| e.to_string())
             .collect::<Vec<_>>()
             .join("\n")
