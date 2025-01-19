@@ -65,10 +65,6 @@ pub fn convert_nom_error<O>(value: nom::IResult<Source, O>) -> IResult<O>
 where
     O: std::fmt::Debug,
 {
-    if value.is_err() {
-        println!("convert_nom_error:: {value:?}");
-    }
-
     match value {
         Ok(v) => Ok(v),
         Err(nom::Err::Error(e)) => Err(nom::Err::Error(ParseError {
@@ -79,7 +75,7 @@ where
             span: e.input.byte_offset()..e.input.byte_offset(),
             error: ErrorKind::Nom(e.code),
         })),
-        Err(nom::Err::Incomplete(_)) => panic!("Got Incomplete error"),
+        Err(nom::Err::Incomplete(_)) => unreachable!("Got Incomplete error"),
     }
 }
 

@@ -106,7 +106,7 @@ mod tests {
             let zz = add(a * b, b) ;
         "#;
         let ast = parse(source).unwrap();
-        println!("{ast:?}");
+
         assert_eq!(
             ast.to_string(),
             vec![

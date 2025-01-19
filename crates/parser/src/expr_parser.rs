@@ -23,7 +23,6 @@ impl<'ops> ExprParser<'ops> {
         let expr = self.parse_expr(&mut source, 0)?;
 
         if let Some(token) = source.next() {
-            println!("{:?} {:?}", expr, token);
             Err(ParseError {
                 span: token.span,
                 error: ErrorKind::UnexpectedToken {

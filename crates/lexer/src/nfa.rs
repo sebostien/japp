@@ -7,9 +7,7 @@
 //! <https://swtch.com/~rsc/regexp/regexp1.html>
 //!
 
-#![allow(soft_unstable)]
-
-use std::fmt::Debug;
+use std::iter;
 
 use crate::state::State;
 use crate::token::Token;
@@ -122,10 +120,6 @@ struct Frag {
 
 impl Nfa {
     /// Compile postfix notation into an NFA.
-    ///
-    /// # Errors
-    ///
-    /// Fails if the postfix stack contians '(' or ')' tokens or has invalid syntax.
     pub fn compile<I: Iterator<Item = Token>>(postfix: I) -> Result<Self, String> {
         let mut nfa = Self::new();
 
@@ -169,12 +163,20 @@ impl Nfa {
             }
         }
 
-        if let (1, Some(e)) = (stack.len(), stack.pop()) {
-            nfa.start = e.start;
-            nfa.patch(&e, nfa.accept);
-            Ok(nfa)
-        } else {
-            Err(format!("Some tokens are still on the stack: {stack:?}"))
+        match (stack.len(), stack.pop()) {
+            (1, Some(e)) => {
+                nfa.start = e.start;
+                nfa.patch(&e, nfa.accept);
+                Ok(nfa)
+            }
+            (0, None) => {
+                nfa.transitions.truncate(0);
+                nfa.transitions.shrink_to(0);
+                Ok(nfa)
+            }
+            (l, head) => {
+                panic!("xx {l}, {:?}, {:?}", head, stack);
+            }
         }
     }
 }
@@ -186,7 +188,7 @@ struct Step {
     /// Number of bytes of the input consumed thus far.
     consumed: usize,
     /// Contains a number for each state.
-    /// If `list[state] == step` then we have reached the state already.
+    /// If `self.list[state] == self.current` then we have reached the state already.
     list: Vec<usize>,
     /// The current step.
     current: usize,
@@ -198,7 +200,7 @@ impl Step {
         Self {
             current_char: 0 as char,
             consumed: 0,
-            list: (0..num_states).map(|_| 0).collect(),
+            list: iter::repeat(0).take(num_states).collect(),
             current: 1,
         }
     }
@@ -275,8 +277,12 @@ impl Nfa {
 
 impl Nfa {
     /// Check is the start of the input matches the regex.
-    /// Returns the length of any match.
+    /// Returns the length in bytes of any match.
     pub fn find<I: Iterator<Item = char>>(&self, input: I) -> Option<usize> {
+        if self.transitions.is_empty() {
+            return None;
+        }
+
         let mut current_list = Vec::with_capacity(self.transitions.len());
         let mut next_list = Vec::with_capacity(self.transitions.len());
 

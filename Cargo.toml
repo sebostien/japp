@@ -12,8 +12,12 @@ parser = { path = "./crates/parser/" }
 japp_util = { path = "./crates/japp_util//" }
 nom = "7.1.3"
 nom-span = "0.1.2"
-criterion = { version = "0.5.1", features = ["html_reports"] }
+
+# Dev
 rand = "0.8.5"
+criterion = { version = "0.5.1", features = ["html_reports"] }
+proptest = { version = "1.6.0", features = ["timeout"] }
+
 
 [dependencies]
 ariadne = "0.5.0"

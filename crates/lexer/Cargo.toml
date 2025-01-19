@@ -9,6 +9,7 @@ japp_util = { workspace = true }
 [dev-dependencies]
 criterion.workspace = true
 rand.workspace = true
+proptest.workspace = true
 
 [[bench]]
 name = "lex_valid"
