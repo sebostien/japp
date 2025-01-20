@@ -129,8 +129,8 @@ mod tests {
             ast.to_string(),
             vec![
                 "let a = a ;",
-                "let b = ( a + b ) ;",
                 "fn add x y = ( x + y ) ;",
+                "let b = ( a + b ) ;",
                 "let zz = add ( ( a * b ) , b ) ;",
             ]
             .join("\n")

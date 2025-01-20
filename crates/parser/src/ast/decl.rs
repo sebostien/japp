@@ -26,18 +26,22 @@ impl std::fmt::Display for Decl<'_> {
                 write!(f, "let {ident} = {expr} ;")
             }
             Self::Fn { ident, rows } => {
-                for FnRow { args, body } in rows {
-                    let args = args
-                        .iter()
-                        .map(Spanned::inner)
-                        .map(Lit::to_string)
-                        .collect::<Vec<_>>()
-                        .join(" ");
+                let rows = rows
+                    .into_iter()
+                    .map(|FnRow { args, body }| {
+                        let args = args
+                            .iter()
+                            .map(Spanned::inner)
+                            .map(Lit::to_string)
+                            .collect::<Vec<_>>()
+                            .join(" ");
 
-                    write!(f, "fn {ident} {args} = {body} ;")?;
-                }
+                        format!("fn {ident} {args} = {body} ;")
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
 
-                Ok(())
+                write!(f, "{rows}")
             }
         }
     }
