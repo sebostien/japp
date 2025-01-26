@@ -1,15 +1,19 @@
-use super::Lit;
+use super::{Ident, Lit};
 use japp_util::Spanned;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr<'a> {
     Binary {
         lhs: Box<Expr<'a>>,
-        op: Spanned<&'a str>,
+        op: Ident<'a>,
+        rhs: Box<Expr<'a>>,
+    },
+    Prefix {
+        op: Ident<'a>,
         rhs: Box<Expr<'a>>,
     },
     FCall {
-        ident: Spanned<&'a str>,
+        ident: Ident<'a>,
         args: Vec<Expr<'a>>,
     },
     Lit(Spanned<Lit<'a>>),
@@ -25,24 +29,25 @@ impl<'a> Expr<'a> {
     pub fn eval(self) -> Result<Lit<'a>, EvalError<'a>> {
         match self {
             Expr::Binary { lhs, op, rhs } => match op.inner {
-                "+" => Ok(Lit::Num(
+                "+" => Ok(Lit::Int(
                     isize::try_from(lhs.eval()?)? + isize::try_from(rhs.eval()?)?,
                 )),
-                "-" => Ok(Lit::Num(
+                "-" => Ok(Lit::Int(
                     isize::try_from(lhs.eval()?)? - isize::try_from(rhs.eval()?)?,
                 )),
-                "*" => Ok(Lit::Num(
+                "*" => Ok(Lit::Int(
                     isize::try_from(lhs.eval()?)? * isize::try_from(rhs.eval()?)?,
                 )),
-                "/" => Ok(Lit::Num(
+                "/" => Ok(Lit::Int(
                     isize::try_from(lhs.eval()?)? / isize::try_from(rhs.eval()?)?,
                 )),
-                "^" => Ok(Lit::Num(
+                "^" => Ok(Lit::Int(
                     isize::try_from(lhs.eval()?)?.pow(isize::try_from(rhs.eval()?)? as u32),
                 )),
                 "==" => Ok(Lit::Bool(lhs.eval()? == rhs.eval()?)),
                 _ => unreachable!(),
             },
+            Expr::Prefix { .. } => todo!(), // TODO:
             Expr::FCall { ident, mut args } => match ident.inner {
                 "identity" => {
                     assert_eq!(
@@ -60,9 +65,9 @@ impl<'a> Expr<'a> {
                     );
                     let a = isize::try_from(args.pop().unwrap().eval()?)?;
                     let b = isize::try_from(args.pop().unwrap().eval()?)?;
-                    Ok(Lit::Num(a + b))
+                    Ok(Lit::Int(a + b))
                 }
-                _ => panic!("Unknown function {ident}"),
+                _ => panic!("Unknown function {ident:?}"),
             },
             Expr::Lit(l) => Ok(l.inner),
         }
@@ -72,10 +77,11 @@ impl<'a> Expr<'a> {
 impl std::fmt::Display for Expr<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expr::Binary { lhs, op, rhs } => write!(f, "( {lhs} {op} {rhs} )"),
+            Expr::Binary { lhs, op, rhs } => write!(f, "( {lhs} {} {rhs} )", op.inner()),
+            Expr::Prefix { .. } => todo!(), // TODO:
             Expr::Lit(lit) => lit.fmt(f),
             Expr::FCall { ident, args } => {
-                write!(f, "{ident} (")?;
+                write!(f, "{} (", ident.outer())?;
 
                 let last = args.len().wrapping_sub(1);
                 for (i, arg) in args.iter().enumerate() {

@@ -2,7 +2,7 @@ use japp_util::Spanned;
 use std::ops::Range;
 use std::{collections::HashMap, iter::Peekable};
 
-use crate::ast::{Assoc, Expr, Fixity, Lit};
+use crate::ast::{Associativity, Expr, Fixity, Ident, Lit};
 use crate::{ErrorKind, ParseError};
 
 pub struct ExprParser<'ops> {
@@ -48,8 +48,9 @@ impl<'ops> ExprParser<'ops> {
 
         while let Some(op) = tokens.peek() {
             let op = op.clone();
+            let op = Ident::new(op.span, op.inner);
 
-            let fixity = match self.operators.get(op.inner) {
+            let fixity = match self.operators.get(op.inner()) {
                 Some(fixity) => fixity,
                 None => {
                     break;
@@ -60,7 +61,7 @@ impl<'ops> ExprParser<'ops> {
                 break;
             }
 
-            if fixity.1.assoc == Assoc::None && fixity.1.prec == precedence {
+            if fixity.1.assoc == Associativity::None && fixity.1.prec == precedence {
                 // Precedence for none associative operators must strictly increase
                 break;
             }
@@ -68,9 +69,9 @@ impl<'ops> ExprParser<'ops> {
             tokens.next();
 
             let next_prec = match fixity.1.assoc {
-                Assoc::Left => fixity.1.prec + 1,
-                Assoc::Right => fixity.1.prec,
-                Assoc::None => fixity.1.prec + 1,
+                Associativity::Left => fixity.1.prec + 1,
+                Associativity::Right => fixity.1.prec,
+                Associativity::None => fixity.1.prec + 1,
             };
 
             let rhs = self.parse_expr(tokens, next_prec)?;
@@ -106,27 +107,26 @@ impl<'ops> ExprParser<'ops> {
                         },
                     });
                 }
-                // return Err("Mismatched parens".to_string());
             }
             Ok(expr)
         } else {
-            match Lit::from(token.inner) {
-                Lit::Ident(_) => {
-                    if tokens.peek().map(Spanned::inner) == Some(&"(") {
-                        return self.parse_f_call(tokens, token);
-                    } else {
-                        Ok(Expr::Lit(token.map(Lit::Ident)))
-                    }
+            let span = token.span.clone();
+            let lit = Lit::from(token.clone());
+
+            if let Lit::Ident(ref ident) = lit {
+                if tokens.peek().map(Spanned::inner) == Some(&"(") {
+                    return self.parse_f_call(tokens, ident.clone());
                 }
-                lit => Ok(Expr::Lit(Spanned::new(lit, token.span))),
             }
+
+            Ok(Expr::Lit(Spanned::new(lit, span)))
         }
     }
 
     fn parse_f_call<'source, I>(
         &mut self,
         tokens: &mut Peekable<I>,
-        ident: Spanned<&'source str>,
+        ident: Ident<'source>,
     ) -> Result<Expr<'source>, ParseError<'source>>
     where
         I: Iterator<Item = Spanned<&'source str>>,
@@ -173,7 +173,7 @@ mod tests {
     use japp_util::Spanned;
     use std::collections::HashMap;
 
-    use crate::ast::{Assoc, Expr, Fixity, Lit};
+    use crate::ast::{Associativity, Expr, Fixity, Ident, Lit};
     use crate::expr_parser::ExprParser;
 
     #[test]
@@ -185,7 +185,7 @@ mod tests {
                     0..0,
                     Fixity {
                         prec: 2,
-                        assoc: Assoc::Left,
+                        assoc: Associativity::Left,
                     },
                 ),
             ),
@@ -195,7 +195,7 @@ mod tests {
                     0..0,
                     Fixity {
                         prec: 2,
-                        assoc: Assoc::Left,
+                        assoc: Associativity::Left,
                     },
                 ),
             ),
@@ -205,7 +205,7 @@ mod tests {
                     0..0,
                     Fixity {
                         prec: 3,
-                        assoc: Assoc::Left,
+                        assoc: Associativity::Left,
                     },
                 ),
             ),
@@ -215,7 +215,7 @@ mod tests {
                     0..0,
                     Fixity {
                         prec: 3,
-                        assoc: Assoc::Left,
+                        assoc: Associativity::Left,
                     },
                 ),
             ),
@@ -225,7 +225,7 @@ mod tests {
                     0..0,
                     Fixity {
                         prec: 4,
-                        assoc: Assoc::Right,
+                        assoc: Associativity::Right,
                     },
                 ),
             ),
@@ -235,7 +235,7 @@ mod tests {
                     0..0,
                     Fixity {
                         prec: 1,
-                        assoc: Assoc::None,
+                        assoc: Associativity::None,
                     },
                 ),
             ),
@@ -259,7 +259,7 @@ mod tests {
                 0..0,
                 Fixity {
                     prec: 3,
-                    assoc: Assoc::Left,
+                    assoc: Associativity::Left,
                 },
             ),
         )]);
@@ -270,28 +270,22 @@ mod tests {
 
         assert_eq!(
             Expr::FCall {
-                ident: Spanned {
-                    span: 0..3,
-                    inner: "add"
-                },
+                ident: Ident::new(0..3, "add"),
                 args: vec![
                     Expr::Binary {
                         lhs: Box::new(Expr::Lit(Spanned {
                             span: 4..5,
-                            inner: Lit::Num(2)
+                            inner: Lit::Int(2)
                         })),
-                        op: Spanned {
-                            span: 5..6,
-                            inner: "*"
-                        },
+                        op: Ident::new(5..6, "*"),
                         rhs: Box::new(Expr::Lit(Spanned {
                             span: 6..7,
-                            inner: Lit::Num(2)
+                            inner: Lit::Int(2)
                         }))
                     },
                     Expr::Lit(Spanned {
                         span: 9..10,
-                        inner: Lit::Num(2)
+                        inner: Lit::Int(2)
                     })
                 ]
             },

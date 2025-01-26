@@ -1,39 +1,19 @@
-use std::collections::HashMap;
-
 use japp_util::Spanned;
-use parser::{
-    ast::{Expr, Lit},
-    Decl, FnRow, Program,
-};
+use parser::{Decl, Expr, FnRow, Lit, Program};
 
-struct Idents {
-    mapped: HashMap<String, String>,
-    s: String,
-}
+struct Idents {}
 
 impl Idents {
     pub fn new() -> Self {
-        Self {
-            mapped: HashMap::new(),
-            s: String::new(),
-        }
+        Self {}
     }
 
     pub fn get(&mut self, s: &str) -> String {
-        if is_builtin(s) {
-            s.to_string()
-        } else if let Some(s) = self.mapped.get(s) {
-            s.clone()
-        } else {
-            self.s.push('a');
-            self.mapped.insert(s.to_string(), self.s.clone());
-            self.mapped.get(s).unwrap().clone()
-        }
+        // TODO: Does javascript support utf-8 symbols?
+        s.chars()
+            .map(|c| if c.is_ascii() { c } else { c })
+            .collect()
     }
-}
-
-fn is_builtin(s: &str) -> bool {
-    matches!(s, "main" | "console.log" | "+" | "-" | "/" | "*" | "==")
 }
 
 pub fn transpile(mut program: Program) -> String {
@@ -44,18 +24,22 @@ pub fn transpile(mut program: Program) -> String {
     for (_, decl) in program.declarations.drain() {
         match decl {
             Decl::Let { ident, rhs } => {
-                let ident = idents.get(ident);
+                let ident = idents.get(ident.outer());
                 out.push_str(
                     format!("let {ident} = {};\n", transpile_expr(&mut idents, rhs)).as_str(),
                 );
             }
-            Decl::Fn { ident, mut rows } => {
-                let ident = idents.get(ident);
+            Decl::Fn {
+                ident,
+                mut rows,
+                type_def: _,
+            } => {
+                let ident = idents.get(ident.outer());
 
                 if rows[0].args.len() == 0 {
                     out.push_str(
                         format!(
-                            "let {ident} = () => {{ 
+                            "const {ident} = () => {{ 
                                 {}
                             }}; \n",
                             transpile_expr(&mut idents, rows.pop().unwrap().body),
@@ -71,19 +55,16 @@ pub fn transpile(mut program: Program) -> String {
                         .collect::<Vec<_>>()
                         .join(", ");
 
-                    out.push_str(
-                        format!(
-                            "let {ident} = ({args}) => {{ 
+                    out.push_str(&format!(
+                        "\nconst {ident} = ({args}) => {{ 
                             switch ({args}) {{
                                 {}
                             }}
                         }}; \n",
-                            rows.into_iter()
-                                .map(|row| transpile_fn_row(&mut idents, row))
-                                .collect::<String>()
-                        )
-                        .as_str(),
-                    );
+                        rows.into_iter()
+                            .map(|row| transpile_fn_row(&mut idents, row))
+                            .collect::<String>()
+                    ));
                 }
             }
         }
@@ -100,12 +81,12 @@ fn transpile_expr(idents: &mut Idents, expr: Expr) -> String {
             format!(
                 "({} {} {})",
                 transpile_expr(idents, *lhs),
-                idents.get(op.inner),
+                idents.get(op.inner()),
                 transpile_expr(idents, *rhs)
             )
         }
         Expr::FCall { ident, args } => {
-            let ident = idents.get(ident.inner);
+            let ident = idents.get(ident.outer());
 
             format!(
                 "( {ident}({}) )",
@@ -116,22 +97,28 @@ fn transpile_expr(idents: &mut Idents, expr: Expr) -> String {
             )
         }
         Expr::Lit(lit) => transpile_lit(idents, lit),
+        Expr::Prefix { op, rhs } => format!(
+            "( {} {} )",
+            idents.get(op.inner()),
+            transpile_expr(idents, *rhs)
+        ),
     }
 }
 
 fn transpile_lit(idents: &mut Idents, lit: Spanned<Lit>) -> String {
     match lit.inner {
         Lit::Bool(b) => b.to_string(),
-        Lit::Num(n) => n.to_string(),
-        Lit::Ident(i) => idents.get(i),
+        Lit::Int(n) => n.to_string(),
+        Lit::Ident(i) => idents.get(i.outer()),
     }
 }
 
 fn transpile_fn_row(idents: &mut Idents, body: FnRow) -> String {
-    let ident = match body.args[0].inner {
+    println!("{:?}", body);
+    let ident = match body.args[0].inner() {
         Lit::Bool(i) => format!("case {i}:"),
-        Lit::Num(i) => format!("case {i}: "),
-        Lit::Ident(i) => format!("default:\n\tlet {} = a0;", idents.get(i)),
+        Lit::Int(i) => format!("case {i}: "),
+        Lit::Ident(i) => format!("default:\n\tlet {} = a0;", idents.get(i.outer())),
     };
 
     format!("{ident} return {}; ", transpile_expr(idents, body.body))

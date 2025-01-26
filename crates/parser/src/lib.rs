@@ -1,20 +1,20 @@
-use ast::Lit;
-use japp_util::Spanned;
 use lexer::ExprLexer;
 use nom::Finish;
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
-pub mod ast;
+mod ast;
+mod error;
 mod expr_parser;
 mod lexer;
 mod parser;
 
-pub use ast::{Decl, Fixity, FnRow, Program, UnparsedDecl};
+pub use ast::{Decl, Expr, Fixity, FnRow, Ident, Lit, Program};
+pub use error::{ErrorKind, ParseError};
+
+use ast::UnparsedDecl;
 use expr_parser::ExprParser;
 use parser::parse_program;
-
-pub use parser::{ErrorKind, ParseError};
 
 pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
     let (_, program) = parse_program(source).finish().map_err(|e| vec![e])?;
@@ -26,9 +26,9 @@ pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
     for decl in program.decls {
         match decl {
             UnparsedDecl::Infix { ident, fixity } => {
-                let this_span = ident.byte_offset()..ident.len();
+                let this_span = ident.outer_span();
                 if let Some((other_span, _)) =
-                    operators.insert(ident.data(), (this_span.clone(), fixity))
+                    operators.insert(ident.inner(), (this_span.clone(), fixity))
                 {
                     errors.push(ParseError {
                         span: this_span,
@@ -55,45 +55,53 @@ pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
                 let tokens = lexer.scan(rhs.byte_offset(), rhs.data());
                 let expr = parser.parse(tokens).map_err(|e| vec![e])?;
 
-                parsed_program.declarations.insert(
-                    ident.data(),
-                    Decl::Let {
-                        ident: ident.data(),
-                        rhs: expr,
-                    },
-                );
+                parsed_program
+                    .declarations
+                    .insert(ident.inner(), Decl::Let { ident, rhs: expr });
             }
             UnparsedDecl::Fn { ident, args, body } => {
                 let body_tokens = lexer.scan(body.byte_offset(), body.data());
                 let body = parser.parse(body_tokens).map_err(|e| vec![e])?;
 
-                tokens.insert(*ident.data());
-                let mut prev =
-                    parsed_program
-                        .declarations
-                        .entry(ident.data())
-                        .or_insert(Decl::Fn {
-                            ident: ident.data(),
-                            rows: vec![],
-                        });
+                tokens.insert(ident.inner());
+                let prev = parsed_program
+                    .declarations
+                    .entry(ident.inner())
+                    .or_insert(Decl::Fn {
+                        ident,
+                        type_def: None,
+                        rows: vec![],
+                    });
+
+                match prev {
+                    Decl::Let { .. } => panic!(),
+                    Decl::Fn { ref mut rows, .. } => rows.push(FnRow { args, body }),
+                };
+            }
+            UnparsedDecl::FnSig { ident, sig } => {
+                let prev = parsed_program
+                    .declarations
+                    .entry(ident.inner())
+                    .or_insert(Decl::Fn {
+                        ident,
+                        type_def: None,
+                        rows: vec![],
+                    });
 
                 match prev {
                     Decl::Let { .. } => panic!(),
                     Decl::Fn {
-                        ident: _,
-                        ref mut rows,
-                    } => rows.push(FnRow {
-                        args: args
-                            .into_iter()
-                            .map(|arg| Spanned {
-                                span: arg.byte_offset()..arg.data().len(),
-                                inner: Lit::from(*arg.data()),
-                            })
-                            .collect(),
-
-                        body,
-                    }),
-                };
+                        ident,
+                        ref mut type_def,
+                        ..
+                    } => {
+                        if type_def.is_some() {
+                            todo!("Fn sig already defined for {}", ident.inner())
+                        } else {
+                            let _ = type_def.insert(sig);
+                        }
+                    }
+                }
             }
             UnparsedDecl::Infix { .. } => unreachable!(),
         }

@@ -1,15 +1,37 @@
-use super::{Assoc, Expr, Fixity, Lit};
+use super::{Expr, Fixity, Ident, Lit};
 use japp_util::Spanned;
 
 #[derive(Debug)]
 pub enum Decl<'a> {
     Let {
-        ident: &'a str,
+        ident: Ident<'a>,
         rhs: Expr<'a>,
     },
     Fn {
-        ident: &'a str,
+        ident: Ident<'a>,
+        type_def: Option<Spanned<Type<'a>>>,
         rows: Vec<FnRow<'a>>,
+    },
+}
+
+// TODO: Should support: Vec<Vec<X>>, bool, i32, X
+// TODO: Dependent, 0, true
+#[derive(Debug, PartialEq, Eq)]
+pub enum Type<'a> {
+    /// Id
+    Ident(Ident<'a>),
+    Fn {
+        /// Type ("->" Type)*
+        args: Vec<Spanned<Type<'a>>>,
+    },
+    Paren {
+        /// "(" Type ")"
+        inner: Box<Spanned<Type<'a>>>,
+    },
+    /// Id<Type ("," Type)*>
+    Refined {
+        ident: Ident<'a>,
+        args: Vec<Spanned<Type<'a>>>,
     },
 }
 
@@ -23,9 +45,18 @@ impl std::fmt::Display for Decl<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Let { ident, rhs: expr } => {
-                write!(f, "let {ident} = {expr} ;")
+                write!(f, "let {} = {expr} ;", ident.outer())
             }
-            Self::Fn { ident, rows } => {
+            Self::Fn {
+                ident,
+                type_def,
+                rows,
+            } => {
+                if let Some(type_def) = type_def {
+                    // TODO: Print type_def
+                    writeln!(f, "{} : {type_def} ;", ident.outer())?;
+                }
+
                 let rows = rows
                     .into_iter()
                     .map(|FnRow { args, body }| {
@@ -36,7 +67,7 @@ impl std::fmt::Display for Decl<'_> {
                             .collect::<Vec<_>>()
                             .join(" ");
 
-                        format!("fn {ident} {args} = {body} ;")
+                        format!("fn {} {args} = {body} ;", ident.outer())
                     })
                     .collect::<Vec<_>>()
                     .join("\n");
@@ -47,47 +78,53 @@ impl std::fmt::Display for Decl<'_> {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum UnparsedDecl<'a> {
-    Infix {
-        ident: nom_span::Spanned<&'a str>,
-        fixity: Fixity,
-    },
-    Let {
-        ident: nom_span::Spanned<&'a str>,
-        rhs: nom_span::Spanned<&'a str>,
-    },
-    Fn {
-        ident: nom_span::Spanned<&'a str>,
-        args: Vec<nom_span::Spanned<&'a str>>,
-        body: nom_span::Spanned<&'a str>,
-    },
-    // Error, // TODO: Error recovery
-}
-
-impl std::fmt::Display for UnparsedDecl<'_> {
+impl std::fmt::Display for Type<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Infix { ident, fixity } => {
-                let assoc = match fixity.assoc {
-                    Assoc::Left => "l",
-                    Assoc::Right => "r",
-                    Assoc::None => "",
-                };
-                write!(f, "infix{assoc} {} {};", ident.data(), fixity.prec)
+            Type::Ident(i) => i.fmt(f),
+            Type::Fn { args } => {
+                write!(
+                    f,
+                    "{}",
+                    args.into_iter()
+                        .map(|arg| { arg.to_string() })
+                        .collect::<Vec<_>>()
+                        .join(" -> ")
+                )
             }
-            Self::Let { ident, rhs } => {
-                write!(f, "let {} = {} ;", ident.data(), rhs.data())
-            }
-            Self::Fn { ident, args, body } => {
-                let args = args
-                    .iter()
-                    .map(nom_span::Spanned::data)
-                    .copied()
+            Type::Refined { ident, args } => write!(
+                f,
+                "{}<{}>",
+                ident.outer(),
+                args.into_iter()
+                    .map(|arg| { arg.to_string() })
                     .collect::<Vec<_>>()
-                    .join(" ");
-                write!(f, "fn {} {args} = {} ;", ident.data(), body.data())
+                    .join(", ")
+            ),
+            Type::Paren { inner } => {
+                write!(f, "( {inner} )")
             }
         }
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum UnparsedDecl<'a> {
+    Infix {
+        ident: Ident<'a>,
+        fixity: Fixity,
+    },
+    Let {
+        ident: Ident<'a>,
+        rhs: nom_span::Spanned<&'a str>,
+    },
+    Fn {
+        ident: Ident<'a>,
+        args: Vec<Spanned<Lit<'a>>>,
+        body: nom_span::Spanned<&'a str>,
+    },
+    FnSig {
+        ident: Ident<'a>,
+        sig: Spanned<Type<'a>>,
+    }, // Error, // TODO: Error recovery
 }

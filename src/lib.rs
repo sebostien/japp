@@ -2,6 +2,15 @@ use ariadne::{Label, Report, ReportKind};
 use parser::{ErrorKind, ParseError};
 use std::ops::Range;
 
+#[derive(Debug)]
+pub enum ErrorCode {
+    CommandError = 4,
+    ParseError = 30,
+    IoError = 40,
+    NoInputFile = 41,
+    FileNotFound = 42,
+}
+
 pub fn make_parse_reports<'f>(
     file_name: &'f str,
     errors: &[ParseError],

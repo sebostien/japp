@@ -8,6 +8,9 @@ nom = { workspace = true }
 nom-span = { workspace = true }
 lexer = { workspace = true }
 japp_util = { workspace = true }
+ariadne = { workspace = true }
+petgraph = { workspace = true }
+regex = "1.11.1"
 
 [dev-dependencies]
 rand = "0.8.5"

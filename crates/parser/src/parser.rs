@@ -3,39 +3,12 @@ use nom::branch::alt;
 use nom::bytes::complete::{tag, take_till};
 use nom::character::complete::{digit1, multispace1, space1};
 use nom::combinator::eof;
-use nom::multi::many0;
+use nom::multi::{many0, separated_list1};
+use nom::sequence::delimited;
 use nom::Parser;
-use std::ops::Range;
 
-use crate::ast::{Assoc, Fixity, UnparsedDecl, UnparsedProgram};
-
-#[derive(Debug)]
-pub struct ParseError<'source> {
-    pub span: Range<usize>,
-    pub error: ErrorKind<'source>,
-}
-
-#[derive(Debug)]
-pub enum ErrorKind<'source> {
-    Multi(Vec<Self>),
-    Nom(nom::error::ErrorKind),
-    InvalidPrecedence(String),
-    UnexpectedToken {
-        found: &'source str,
-        expected: &'source str,
-    },
-    DuplicateFixity {
-        other: Range<usize>,
-    },
-    ExprParser {
-        error: String,
-    },
-    Mismatched {
-        start: &'source str,
-        expected: Option<Spanned<&'source str>>,
-        extra_info: &'source str,
-    },
-}
+use crate::ast::{Associativity, Type, UnparsedProgram};
+use crate::{ErrorKind, Fixity, Ident, Lit, ParseError, UnparsedDecl};
 
 impl<'a> nom::error::ParseError<Source<'a>> for ParseError<'_> {
     fn from_error_kind(input: Source<'a>, kind: nom::error::ErrorKind) -> Self {
@@ -86,7 +59,7 @@ fn spaces(input: Source) -> Source {
 }
 
 /// Any utf-8 (without whitespace) sequence not starting with an ascii digit.
-fn ident(input: Source) -> IResult<Source> {
+fn ident(input: Source) -> IResult<Ident> {
     let input = spaces(input);
 
     let ident_start = input.byte_offset();
@@ -102,27 +75,39 @@ fn ident(input: Source) -> IResult<Source> {
     }
 
     let (input, ident) = convert_nom_error(take_till(|c: char| c.is_whitespace())(input))?;
+    let ident_span = ident.byte_offset()..ident.byte_offset() + ident.len();
+    let ident = Ident::new(ident_span, ident.data());
 
     let ident_end = input.byte_offset();
 
     let (input, _) = convert_nom_error(many0(space1)(input))?;
 
-    match *ident.data() {
-        ";" => Err(nom::Err::Failure(ParseError {
+    if matches!(*ident, "=" | ";" | "," | "fn") {
+        Err(nom::Err::Error(ParseError {
             span: ident_start..ident_end + 1,
             error: ErrorKind::UnexpectedToken {
-                found: ident.data(),
+                found: ident.outer(),
                 expected: "Ident",
             },
-        })),
-        "=" => Err(nom::Err::Error(ParseError {
-            span: ident_start..ident_end + 1,
-            error: ErrorKind::UnexpectedToken {
-                found: ident.data(),
-                expected: "Ident",
+        }))
+    } else {
+        Ok((input, ident))
+    }
+}
+
+fn lit(input: Source) -> IResult<Spanned<Lit>> {
+    match ident(input) {
+        Ok((input, ident)) => Ok((
+            input,
+            Spanned {
+                span: ident.outer_span(),
+                inner: Lit::from(ident),
             },
-        })),
-        _ => Ok((input, ident)),
+        )),
+        Err(e) => {
+            // TODO: Attach some context
+            Err(e)
+        }
     }
 }
 
@@ -135,9 +120,9 @@ fn unparsed_expr(input: Source) -> IResult<Source> {
 fn infix_decl(input: Source) -> IResult<UnparsedDecl> {
     let input = spaces(input);
     let (input, assoc) = alt((
-        tag("infixl").map(|_| Assoc::Left),
-        tag("infixr").map(|_| Assoc::Right),
-        tag("infix").map(|_| Assoc::None),
+        tag("infixl").map(|_| Associativity::Left),
+        tag("infixr").map(|_| Associativity::Right),
+        tag("infix").map(|_| Associativity::None),
     ))(input)?;
     let input = spaces(input);
 
@@ -180,13 +165,84 @@ fn let_decl(input: Source) -> IResult<UnparsedDecl> {
     Ok((input, UnparsedDecl::Let { ident, rhs: expr }))
 }
 
+fn ty(input: Source) -> IResult<Spanned<Type>> {
+    // TODO: Ident, Refined
+
+    let input = spaces(input);
+    let start = input.byte_offset();
+
+    let inside = delimited(tag("("), tys, tag(")")).map(|inner| {
+        let end = input.byte_offset();
+        Spanned {
+            span: start..end,
+            inner: Type::Paren {
+                inner: Box::new(inner),
+            },
+        }
+    });
+
+    let refined = ident
+        .and(delimited(
+            tag("<"),
+            separated_list1(tag(","), tys),
+            tag(">"),
+        ))
+        .map(|(ident, args)| {
+            let end = input.byte_offset();
+            Spanned::new(Type::Refined { ident, args }, start..end)
+        });
+
+    let single = ident.map(|id| {
+        let end = input.byte_offset();
+        Spanned::new(Type::Ident(id), start..end)
+    });
+
+    let (input, ty) = refined.or(inside).or(single).parse(input)?;
+    let input = spaces(input);
+    Ok((input, ty))
+}
+
+fn tys(input: Source) -> IResult<Spanned<Type>> {
+    let input = spaces(input);
+    let start = input.byte_offset();
+
+    let many = separated_list1(tag("->"), ty).map(|args| {
+        let end = input.byte_offset();
+        Spanned {
+            span: start..end,
+            inner: Type::Fn { args },
+        }
+    });
+
+    let (input, inner) = many.or(ty).parse(input)?;
+    let input = spaces(input);
+
+    Ok((input, inner))
+}
+
+/// `fac : isize -> isize`
+fn fn_sig(input: Source) -> IResult<UnparsedDecl> {
+    let input = spaces(input);
+    let (input, name) = ident(input)?;
+
+    let input = spaces(input);
+    let (input, _) = tag(":")(input)?;
+    let (input, _) = space1(input)?;
+
+    let (input, sig) = tys(input)?;
+    let input = spaces(input);
+    let (input, _) = tag(";")(input)?;
+
+    Ok((input, UnparsedDecl::FnSig { ident: name, sig }))
+}
+
 fn fn_decl(input: Source) -> IResult<UnparsedDecl> {
     let input = spaces(input);
     let (input, _) = tag("fn")(input)?;
     let (input, _) = space1(input)?;
 
     let (input, name) = ident(input)?;
-    let (input, args) = many0(ident)(input)?;
+    let (input, args) = many0(lit)(input)?;
     let (input, _) = tag("=")(input)?;
 
     let (input, body) = unparsed_expr(input)?;
@@ -203,7 +259,7 @@ fn fn_decl(input: Source) -> IResult<UnparsedDecl> {
 }
 
 fn decl(input: Source) -> IResult<UnparsedDecl> {
-    alt((infix_decl, let_decl, fn_decl))(input)
+    alt((infix_decl, let_decl, fn_decl, fn_sig))(input)
 }
 
 pub fn parse_program(input: &str) -> IResult<UnparsedProgram> {
@@ -267,17 +323,22 @@ mod tests {
         assert!(ident(Source::new_for_ut8("hello")).is_ok());
         assert!(ident(Source::new_for_ut8("=;=")).is_ok());
 
-        let (input, id) = ident(Source::new("fn . ", true)).unwrap();
+        let (input, id) = ident(Source::new("_toho_ . ", true)).unwrap();
 
         assert_eq!(*input.data(), ". ");
         assert_eq!(input.line(), 1);
-        assert_eq!(input.col(), 4);
-        assert_eq!(input.byte_offset(), 3);
+        assert_eq!(input.col(), 8);
+        assert_eq!(input.byte_offset(), 7);
 
-        assert_eq!(*id.data(), "fn");
-        assert_eq!(id.col(), 1);
-        assert_eq!(id.line(), 1);
-        assert_eq!(id.byte_offset(), 0);
+        assert_eq!(id.outer(), "_toho_");
+        assert_eq!(id.outer_span(), 0..6);
+        assert_eq!(id.inner(), "toho");
+        assert_eq!(id.inner_span(), 1..5);
+    }
+
+    #[test]
+    fn t_ok_type() {
+        assert!(tys(Source::new_for_ut8("( X -> Y )")).is_ok());
     }
 
     // //////////////////////////////////////////////////

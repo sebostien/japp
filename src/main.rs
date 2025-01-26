@@ -1,41 +1,59 @@
+use std::path::PathBuf;
+
+use clap::Parser;
+use japp::ErrorCode;
 use parser::parse;
 
-#[derive(Debug)]
-enum ErrorCode {
-    ParseError = 30,
-    IoError = 40,
-    NoInputFile = 41,
-    FileNotFound = 42,
+#[derive(Debug, Clone, clap::Parser)]
+enum CLI {
+    Compile {
+        #[clap(short, long)]
+        file_name: PathBuf,
+        #[clap(short, long)]
+        out_name: Option<PathBuf>,
+    },
 }
 
 fn main() -> Result<(), ErrorCode> {
-    let file_name = std::env::args().nth(1).ok_or_else(|| {
-        eprintln!("Pass input as argument!");
-        ErrorCode::NoInputFile
-    })?;
-    let file_name = file_name.as_str();
-
-    let source = std::fs::read_to_string(file_name).map_err(|e| {
+    let command = CLI::try_parse().map_err(|e| {
         eprintln!("{e}");
-        ErrorCode::FileNotFound
+        ErrorCode::CommandError
     })?;
-    let source = source.as_str();
 
-    match parse(source) {
-        Ok(source) => {
-            println!("{source:#?}\n");
-            std::fs::write("test.js", transpiler::transpile(source)).unwrap();
-            // println!("{source}");
-            Ok(())
-        }
-        Err(e) => {
-            for report in japp::make_parse_reports(file_name, &e) {
-                if let Err(e) = report.print((file_name, ariadne::Source::from(source))) {
-                    eprintln!("{e}");
-                    return Err(ErrorCode::IoError);
+    match command {
+        CLI::Compile {
+            file_name,
+            out_name,
+        } => {
+            let file_name_str = file_name.to_string_lossy();
+            let file_name_str = file_name_str.as_ref();
+            let out_name = out_name.as_ref().unwrap_or(&file_name);
+
+            let source = std::fs::read_to_string(&file_name).map_err(|e| {
+                eprintln!("{e}");
+                ErrorCode::FileNotFound
+            })?;
+            let source = source.as_str();
+
+            match parse(source) {
+                Ok(source) => {
+                    println!("{source:#?}\n");
+                    std::fs::write(out_name, transpiler::transpile(source)).unwrap();
+                    // println!("{source}");
+                    Ok(())
+                }
+                Err(e) => {
+                    for report in japp::make_parse_reports(file_name_str, &e) {
+                        if let Err(e) =
+                            report.eprint((file_name_str, ariadne::Source::from(source)))
+                        {
+                            eprintln!("{e}");
+                            return Err(ErrorCode::IoError);
+                        }
+                    }
+                    Err(ErrorCode::ParseError)
                 }
             }
-            Err(ErrorCode::ParseError)
         }
     }
 }

@@ -1,11 +1,11 @@
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Fixity {
     pub prec: usize,
-    pub assoc: Assoc,
+    pub assoc: Associativity,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Assoc {
+pub enum Associativity {
     /// Left associativity
     ///
     /// `1 / 2 / 3 = (1 / 2) / 3`

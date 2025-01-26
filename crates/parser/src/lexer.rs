@@ -7,7 +7,10 @@ pub struct ExprLexer {
 }
 
 impl ExprLexer {
-    pub fn new<'o, OI: IntoIterator<Item = &'o str>>(operators: OI) -> Self {
+    pub fn new<'o, OI: IntoIterator<Item = &'o str>>(operators: OI) -> Self
+    where
+        OI: std::fmt::Debug,
+    {
         let ops = operators.into_iter().chain(DEFAULT_OPS);
         let lexer = Lexer::compile(ops);
 
@@ -24,4 +27,3 @@ impl ExprLexer {
         self.lexer.scan(offset, source)
     }
 }
-
