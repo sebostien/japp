@@ -27,7 +27,12 @@ fn main() -> Result<(), ErrorCode> {
         } => {
             let file_name_str = file_name.to_string_lossy();
             let file_name_str = file_name_str.as_ref();
-            let out_name = out_name.as_ref().unwrap_or(&file_name);
+
+            let out_name = out_name.clone().unwrap_or_else(|| {
+                let mut o = file_name.clone();
+                o.set_extension("js");
+                o
+            });
 
             let source = std::fs::read_to_string(&file_name).map_err(|e| {
                 eprintln!("{e}");
@@ -39,7 +44,6 @@ fn main() -> Result<(), ErrorCode> {
                 Ok(source) => {
                     println!("{source:#?}\n");
                     std::fs::write(out_name, transpiler::transpile(source)).unwrap();
-                    // println!("{source}");
                     Ok(())
                 }
                 Err(e) => {
