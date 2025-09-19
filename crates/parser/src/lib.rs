@@ -1,6 +1,6 @@
 use lexer::ExprLexer;
 use nom::Finish;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::ops::Range;
 
 mod ast;
@@ -16,7 +16,7 @@ use ast::UnparsedDecl;
 use expr_parser::ExprParser;
 use parser::parse_program;
 
-pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
+pub fn parse(source: &str) -> Result<Program<'_>, Vec<ParseError<'_>>> {
     let (_, program) = parse_program(source).finish().map_err(|e| vec![e])?;
 
     let mut declarations = vec![];
@@ -42,8 +42,9 @@ pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
         }
     }
 
+    println!("{:?}", operators.keys().collect::<Vec<_>>());
+
     let lexer = ExprLexer::new(operators.iter().map(|a| *a.0));
-    let mut tokens = HashSet::new();
     let mut parser = ExprParser::new(operators);
     let mut parsed_program = Program {
         declarations: HashMap::new(),
@@ -63,7 +64,6 @@ pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
                 let body_tokens = lexer.scan(body.byte_offset(), body.data());
                 let body = parser.parse(body_tokens).map_err(|e| vec![e])?;
 
-                tokens.insert(ident.inner());
                 let prev = parsed_program
                     .declarations
                     .entry(ident.inner())
@@ -116,6 +116,8 @@ pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
 
 #[cfg(test)]
 mod tests {
+    use ariadne::Source;
+
     use crate::parse;
 
     #[test]
@@ -163,9 +165,24 @@ mod tests {
             vec![
                 "fn fac 0 = 1 ;",
                 "fn fac n = ( n * fac ( ( n - 1 ) ) ) ;",
-                "fn main  = fac ( 5 ) ;",
+                "fn main = fac ( 5 ) ;",
             ]
             .join("\n")
         );
+    }
+
+    #[test]
+    fn t_func_block_body() {
+        let source = r#"
+            fn fac = { 1 ; 2 ; 3 } ;
+        "#;
+        let ast = parse(source)
+            .map_err(|e| {
+                e[0].make_report("test")
+                    .eprint(("test", Source::from(source)))
+            })
+            .unwrap();
+
+        assert_eq!(ast.to_string(), vec!["fn fac = { 1 ; 2 ; 3 } ;"].join("\n"));
     }
 }

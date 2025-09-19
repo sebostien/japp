@@ -1,14 +1,15 @@
-use japp_util::Spanned;
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_till};
 use nom::character::complete::{digit1, multispace1, space1};
 use nom::combinator::eof;
 use nom::multi::{many0, separated_list1};
 use nom::sequence::delimited;
-use nom::Parser;
+use nom::{InputTakeAtPosition, Parser};
+use std::cell::RefCell;
 
 use crate::ast::{Associativity, Type, UnparsedProgram};
 use crate::{ErrorKind, Fixity, Ident, Lit, ParseError, UnparsedDecl};
+use japp_util::Spanned;
 
 impl<'a> nom::error::ParseError<Source<'a>> for ParseError<'_> {
     fn from_error_kind(input: Source<'a>, kind: nom::error::ErrorKind) -> Self {
@@ -64,15 +65,15 @@ fn ident(input: Source) -> IResult<Ident> {
 
     let ident_start = input.byte_offset();
 
-    if input.starts_with(",") {
-        return Err(nom::Err::Error(ParseError {
-            span: input.byte_offset()..input.byte_offset() + 1,
-            error: ErrorKind::UnexpectedToken {
-                found: ",",
-                expected: "Ident",
-            },
-        }));
-    }
+    // if input.starts_with(",") {
+    //     return Err(nom::Err::Error(ParseError {
+    //         span: input.byte_offset()..input.byte_offset() + 1,
+    //         error: ErrorKind::UnexpectedToken {
+    //             found: ",",
+    //             expected: "Ident",
+    //         },
+    //     }));
+    // }
 
     let (input, ident) = convert_nom_error(take_till(|c: char| c.is_whitespace())(input))?;
     let ident_span = ident.byte_offset()..ident.byte_offset() + ident.len();
@@ -80,8 +81,10 @@ fn ident(input: Source) -> IResult<Ident> {
 
     let ident_end = input.byte_offset();
 
+    // Make sure a space is after the ident
     let (input, _) = convert_nom_error(many0(space1)(input))?;
 
+    // Non valid idents
     if matches!(*ident, "=" | ";" | "," | "fn") {
         Err(nom::Err::Error(ParseError {
             span: ident_start..ident_end + 1,
@@ -113,7 +116,30 @@ fn lit(input: Source) -> IResult<Spanned<Lit>> {
 
 fn unparsed_expr(input: Source) -> IResult<Source> {
     let input = spaces(input);
-    let (input, expr) = convert_nom_error(take_till(|c| c == ';')(input))?;
+
+    // THIS IS SO FUCKING STUPID!
+    let inc = RefCell::new(0usize);
+
+    // Take as much as possible.
+    // Only quitting for EOF or when ';' is found and we are not in a block.
+    let (input, expr) = input.split_at_position_complete(move |c| {
+        let x = *inc.borrow();
+        match (x, c) {
+            (0, ';') => {
+                return true;
+            }
+            (x, '{') => {
+                inc.replace(x + 1);
+            }
+            (x, '}') => {
+                inc.replace(x.saturating_sub(1));
+            }
+            _ => {}
+        }
+
+        false
+    })?;
+
     Ok((input, expr))
 }
 
@@ -246,6 +272,7 @@ fn fn_decl(input: Source) -> IResult<UnparsedDecl> {
     let (input, _) = tag("=")(input)?;
 
     let (input, body) = unparsed_expr(input)?;
+    let input = spaces(input);
     let (input, _) = tag(";")(input)?;
 
     Ok((

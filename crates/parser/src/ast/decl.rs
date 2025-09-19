@@ -67,7 +67,11 @@ impl std::fmt::Display for Decl<'_> {
                             .collect::<Vec<_>>()
                             .join(" ");
 
-                        format!("fn {} {args} = {body} ;", ident.outer())
+                        if args.is_empty() {
+                            format!("fn {} = {body} ;", ident.outer())
+                        } else {
+                            format!("fn {} {args} = {body} ;", ident.outer())
+                        }
                     })
                     .collect::<Vec<_>>()
                     .join("\n");

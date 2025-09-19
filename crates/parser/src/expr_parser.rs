@@ -96,8 +96,7 @@ impl<'ops> ExprParser<'ops> {
 
         if token.inner == "(" {
             let expr = self.parse_expr(tokens, 0)?;
-            let cparen = tokens.next();
-            if let Some(cparen) = cparen {
+            if let Some(cparen) = tokens.next() {
                 if cparen.inner != ")" {
                     return Err(ParseError {
                         span: cparen.span,
@@ -109,6 +108,43 @@ impl<'ops> ExprParser<'ops> {
                 }
             }
             Ok(expr)
+        } else if token.inner == "{" {
+            let mut inner_exprs = Vec::new();
+            loop {
+                let expr = self.parse_expr(tokens, 0)?;
+                inner_exprs.push(expr);
+
+                match tokens.peek().map(|t| *t.inner()) {
+                    Some(";") => {
+                        let _ = tokens.next();
+                        continue;
+                    }
+                    Some("}") => {
+                        let _ = tokens.next();
+                        break;
+                    }
+                    None => {
+                        return Err(ParseError {
+                            span: token.span,
+                            error: ErrorKind::Mismatched {
+                                start: "{",
+                                expected: None,
+                                extra_info: "",
+                            },
+                        });
+                    }
+                    _ => {
+                        continue;
+                    }
+                }
+            }
+
+            let last = inner_exprs.pop().map(Box::new);
+
+            Ok(Expr::Block {
+                exprs: inner_exprs,
+                last,
+            })
         } else {
             let span = token.span.clone();
             let lit = Lit::from(token.clone());
@@ -304,5 +340,24 @@ mod tests {
         let source = "add(2,3,)";
         let tokens = lexer.scan(0, source);
         assert!(ExprParser::new(HashMap::default()).parse(tokens).is_ok());
+    }
+
+    #[test]
+    fn block() {
+        let lexer = crate::lexer::ExprLexer::new([]);
+
+        let source = "{ 1 }";
+        let tokens = lexer.scan(0, source);
+        if let Err(e) = ExprParser::new(HashMap::default()).parse(tokens) {
+            eprintln!("{e:?}");
+            panic!("Expected ok");
+        }
+
+        let source = "{ println(2, 4, 3) ; 1337 }";
+        let tokens = lexer.scan(0, source);
+        if let Err(e) = ExprParser::new(HashMap::default()).parse(tokens) {
+            eprintln!("{e:?}");
+            panic!("Expected ok");
+        }
     }
 }

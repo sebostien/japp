@@ -35,6 +35,9 @@ pub fn transpile(mut program: Program) -> String {
                 type_def: _,
             } => {
                 let ident = idents.get(ident.outer());
+                if rows.is_empty() {
+                    return out;
+                }
 
                 if rows[0].args.len() == 0 {
                     out.push_str(
@@ -47,7 +50,7 @@ pub fn transpile(mut program: Program) -> String {
                         .as_str(),
                     );
                 } else {
-                    println!("{} {}", rows.len(), rows[0].args.len());
+                    // println!("{} {}", rows.len(), rows[0].args.len());
                     // TODO: This is stupid! Only works for |args| = 1
                     let args = (0..)
                         .take(rows[0].args.len())
@@ -86,7 +89,10 @@ fn transpile_expr(idents: &mut Idents, expr: Expr) -> String {
             )
         }
         Expr::FCall { ident, args } => {
-            let ident = idents.get(ident.outer());
+            let mut ident = idents.get(ident.outer());
+            if ident == "println" {
+                ident = "console.log".to_string();
+            }
 
             format!(
                 "( {ident}({}) )",
@@ -102,6 +108,7 @@ fn transpile_expr(idents: &mut Idents, expr: Expr) -> String {
             idents.get(op.inner()),
             transpile_expr(idents, *rhs)
         ),
+        Expr::Block { exprs, last } => transpile_block(idents, exprs, last),
     }
 }
 
@@ -114,7 +121,6 @@ fn transpile_lit(idents: &mut Idents, lit: Spanned<Lit>) -> String {
 }
 
 fn transpile_fn_row(idents: &mut Idents, body: FnRow) -> String {
-    println!("{:?}", body);
     let ident = match body.args[0].inner() {
         Lit::Bool(i) => format!("case {i}:"),
         Lit::Int(i) => format!("case {i}: "),
@@ -122,4 +128,19 @@ fn transpile_fn_row(idents: &mut Idents, body: FnRow) -> String {
     };
 
     format!("{ident} return {}; ", transpile_expr(idents, body.body))
+}
+
+fn transpile_block(idents: &mut Idents, exprs: Vec<Expr>, last: Option<Box<Expr>>) -> String {
+    let mut s = String::new();
+
+    for e in exprs {
+        s += &transpile_expr(idents, e);
+        s += ";\n";
+    }
+
+    if let Some(last) = last {
+        s += &format!("return {} ;", transpile_expr(idents, *last));
+    }
+
+    format!("{{\n{s}}}\n")
 }

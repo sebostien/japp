@@ -1,8 +1,18 @@
-infixl _-_  1 ;
-infixl _*_  2 ;
+infixl _==_  1;
+infixl _-_   2;
+infixl _*_   3;
 
-fac : i32 -> i32 ;
-fn fac 0 = 1 ;
-fn fac n = n * fac (n - 1) ;
+fac : isize -> isize ;
+fn fac 0 = 1;
+fn fac n = n * fac (n - 1);
 
-fn main = console.log(fac(5)) ;
+fn main = {
+
+  println(fac(0) * fac(0));
+
+  println(
+    fac(5),
+    fac(20) == fac(2 * 10),
+    100 - 10 * 5 == 50,
+  )
+};

@@ -7,7 +7,6 @@ use parser::parse;
 #[derive(Debug, Clone, clap::Parser)]
 enum CLI {
     Compile {
-        #[clap(short, long)]
         file_name: PathBuf,
         #[clap(short, long)]
         out_name: Option<PathBuf>,
@@ -42,7 +41,7 @@ fn main() -> Result<(), ErrorCode> {
 
             match parse(source) {
                 Ok(source) => {
-                    println!("{source:#?}\n");
+                    // println!("{source:#?}\n");
                     std::fs::write(out_name, transpiler::transpile(source)).unwrap();
                     Ok(())
                 }
