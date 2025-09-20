@@ -75,9 +75,9 @@ fn ident(input: Source) -> IResult<Ident> {
         }));
     }
 
-    let (input, ident) = convert_nom_error(take_till(|c: char| c.is_whitespace())(input))?;
-    let ident_span = ident.byte_offset()..ident.byte_offset() + ident.len();
-    let ident = Ident::new(ident_span, ident.data());
+    let (input, full_ident) = convert_nom_error(take_till(|c: char| c.is_whitespace())(input))?;
+    let ident_span = full_ident.byte_offset()..full_ident.byte_offset() + full_ident.len();
+    let ident = Ident::new(ident_span, full_ident.data());
 
     let ident_end = input.byte_offset();
 
@@ -85,7 +85,7 @@ fn ident(input: Source) -> IResult<Ident> {
     let (input, _) = convert_nom_error(many0(space1)(input))?;
 
     // Non valid idents
-    if matches!(*ident, "=" | ";" | "," | "fn") {
+    if matches!(*full_ident, "=" | ";" | "," | "fn") {
         Err(nom::Err::Error(ParseError {
             span: ident_start..ident_end + 1,
             error: ErrorKind::UnexpectedToken {

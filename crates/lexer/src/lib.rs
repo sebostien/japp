@@ -20,7 +20,6 @@ impl Lexer {
         let symbols = symbols
             .into_iter()
             .map(|symbol| {
-                println!("{}", symbol.as_ref());
                 symbol
                     .as_ref()
                     .chars()

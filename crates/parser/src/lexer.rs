@@ -1,6 +1,6 @@
 use lexer::{Lexer, Scanner};
 
-const DEFAULT_OPS: [&str; 7] = ["(", ")", ",", "{", "}", ";", "="];
+const DEFAULT_OPS: [&str; 6] = ["(", ")", ",", "{", "}", ";"];
 
 #[derive(Debug)]
 pub struct ExprLexer {
@@ -8,9 +8,10 @@ pub struct ExprLexer {
 }
 
 impl ExprLexer {
-    pub fn new<'o, OI: IntoIterator<Item = &'o str>>(operators: OI) -> Self
+    pub fn new<'o, OI>(operators: OI) -> Self
     where
         OI: std::fmt::Debug,
+        OI: IntoIterator<Item = &'o str>,
     {
         let ops = operators.into_iter().chain(DEFAULT_OPS);
         let lexer = Lexer::compile(ops);

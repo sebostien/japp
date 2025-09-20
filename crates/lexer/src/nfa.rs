@@ -200,7 +200,7 @@ impl Step {
         Self {
             current_char: 0 as char,
             consumed: 0,
-            list: iter::repeat(0).take(num_states).collect(),
+            list: iter::repeat_n(0, num_states).collect(),
             current: 1,
         }
     }

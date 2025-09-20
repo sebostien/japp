@@ -58,7 +58,7 @@ impl std::fmt::Display for Decl<'_> {
                 }
 
                 let rows = rows
-                    .into_iter()
+                    .iter()
                     .map(|FnRow { args, body }| {
                         let args = args
                             .iter()
@@ -90,7 +90,7 @@ impl std::fmt::Display for Type<'_> {
                 write!(
                     f,
                     "{}",
-                    args.into_iter()
+                    args.iter()
                         .map(|arg| { arg.to_string() })
                         .collect::<Vec<_>>()
                         .join(" -> ")
@@ -100,7 +100,7 @@ impl std::fmt::Display for Type<'_> {
                 f,
                 "{}<{}>",
                 ident.outer(),
-                args.into_iter()
+                args.iter()
                     .map(|arg| { arg.to_string() })
                     .collect::<Vec<_>>()
                     .join(", ")

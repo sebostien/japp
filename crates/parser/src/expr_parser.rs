@@ -1,4 +1,5 @@
 use japp_util::Spanned;
+use log::debug;
 use std::ops::Range;
 use std::{collections::HashMap, iter::Peekable};
 
@@ -23,7 +24,6 @@ impl<'ops> ExprParser<'ops> {
             ),
         );
 
-        println!("Expr Parser: {operators:?}");
         Self { operators }
     }
 
@@ -57,10 +57,10 @@ impl<'ops> ExprParser<'ops> {
     where
         I: Iterator<Item = Spanned<&'source str>>,
     {
-        let mut lhs = self.primary(tokens)?;
+        let mut lhs = self.primary(tokens, precedence)?;
 
         while let Some(op) = tokens.peek() {
-            println!("parse_expr:: {op}");
+            debug!("parse_expr with '{op}'");
             let op = op.clone();
             let op = Ident::new(op.span, op.inner);
 
@@ -77,7 +77,12 @@ impl<'ops> ExprParser<'ops> {
 
             if fixity.1.assoc == Associativity::None && fixity.1.prec == precedence {
                 // Precedence for none associative operators must strictly increase
-                break;
+                return Err(ParseError {
+                    span: op.outer_span(),
+                    error: ErrorKind::ExprParser {
+                        error: "Could not parse non associative expression".to_string(),
+                    },
+                });
             }
 
             tokens.next();
@@ -85,7 +90,7 @@ impl<'ops> ExprParser<'ops> {
             let next_prec = match fixity.1.assoc {
                 Associativity::Left => fixity.1.prec + 1,
                 Associativity::Right => fixity.1.prec,
-                Associativity::None => fixity.1.prec + 1,
+                Associativity::None => fixity.1.prec,
             };
 
             let rhs = self.parse_expr(tokens, next_prec)?;
@@ -102,6 +107,7 @@ impl<'ops> ExprParser<'ops> {
     fn primary<'source, I>(
         &mut self,
         tokens: &mut Peekable<I>,
+        _precedence: usize,
     ) -> Result<Expr<'source>, ParseError<'source>>
     where
         I: Iterator<Item = Spanned<&'source str>>,
@@ -158,6 +164,14 @@ impl<'ops> ExprParser<'ops> {
             Ok(Expr::Block {
                 exprs: inner_exprs,
                 last,
+            })
+        } else if let Some((_, fix)) = self.operators.get(token.inner) {
+            // TODO: Precedence
+            let rhs = self.parse_expr(tokens, fix.prec)?;
+
+            Ok(Expr::Prefix {
+                op: Ident::new(token.span, token.inner),
+                rhs: Box::new(rhs),
             })
         } else {
             let span = token.span.clone();
@@ -323,15 +337,66 @@ mod tests {
     }
 
     #[test]
+    fn prefix() {
+        let ops = [(
+            "!",
+            (
+                0..0,
+                Fixity {
+                    prec: 1,
+                    assoc: Associativity::Right,
+                },
+            ),
+        )]
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+
+        let lexer = ExprLexer::new(ops.keys().copied());
+
+        let source = "! 1";
+        let tokens = lexer.scan(0, source);
+        let result = ExprParser::new(ops.clone()).parse(tokens).unwrap();
+        assert_eq!(
+            result,
+            Expr::Prefix {
+                op: Ident::new(0..1, "!"),
+                rhs: Box::new(Expr::Lit(Spanned::new(Lit::Int(1), 2..3))),
+            }
+        );
+
+        let source = "!!!!5";
+        let tokens = lexer.scan(0, source);
+        if let Err(e) = ExprParser::new(ops).parse(tokens) {
+            eprintln!("{e:?}");
+            panic!("Expected ok");
+        }
+    }
+
+    #[test]
     fn assign() {
         let ops = get_test_ops();
         let lexer = ExprLexer::new(ops.keys().copied());
 
         let source = "x = 2";
         let tokens = lexer.scan(0, source);
-        if let Err(e) = ExprParser::new(ops.clone()).parse(tokens) {
-            eprintln!("{e:?}");
-            panic!("Expected ok");
+        match ExprParser::new(ops.clone()).parse(tokens) {
+            Err(e) => {
+                eprintln!("{e:?}");
+                panic!("Expected ok");
+            }
+            Ok(ast) => {
+                assert_eq!(
+                    ast,
+                    Expr::Binary {
+                        lhs: Box::new(Expr::Lit(Spanned::new(
+                            Lit::Ident(Ident::new(0..1, "x")),
+                            0..1
+                        ))),
+                        op: Ident::new(2..3, "="),
+                        rhs: Box::new(Expr::Lit(Spanned::new(Lit::Int(2), 4..5))),
+                    }
+                );
+            }
         }
 
         let source = "x = y = 3";
