@@ -10,7 +10,7 @@ lexer = { workspace = true }
 japp_util = { workspace = true }
 ariadne = { workspace = true }
 petgraph = { workspace = true }
-regex = "1.11.1"
+log = { workspace = true }
 
 [dev-dependencies]
-rand = "0.8.5"
+rand = { workspace = true }

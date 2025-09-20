@@ -11,19 +11,27 @@ lexer = { path = "./crates/lexer/" }
 parser = { path = "./crates/parser/" }
 japp_util = { path = "./crates/japp_util//" }
 transpiler = { path = "./crates/transpiler/" }
+
 nom = "7.1.3"
 nom-span = "0.1.2"
 ariadne = "0.5.0"
 petgraph = "0.7.1"
+clap = { version = "4.5.35", features = ["derive"] }
+log = "0.4.28"
+fern = "0.7.1"
+humantime = "2.3.0"
 
-# Dev
+# dev-dependencies
 rand = "0.8.5"
 criterion = { version = "0.5.1", features = ["html_reports"] }
 proptest = { version = "1.6.0", features = ["timeout"] }
 
 
 [dependencies]
-ariadne.workspace = true
-clap = { version = "4.5.35", features = ["derive"] }
-parser.workspace = true
-transpiler.workspace = true
+ariadne = { workspace = true }
+parser = { workspace = true }
+transpiler = { workspace = true }
+clap = { workspace = true }
+log = { workspace = true }
+fern = { workspace = true }
+humantime = { workspace = true }

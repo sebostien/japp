@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-parser.workspace = true
-japp_util.workspace = true
+parser = { workspace = true }
+japp_util = { workspace = true }
+log = { workspace = true }
