@@ -5,6 +5,7 @@ use std::ops::Range;
 #[derive(Debug)]
 pub enum ErrorCode {
     CommandError = 4,
+    LogSetup = 5,
     ParseError = 30,
     IoError = 40,
     NoInputFile = 41,

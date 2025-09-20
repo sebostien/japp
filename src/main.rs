@@ -1,11 +1,13 @@
-use std::path::PathBuf;
-
 use clap::Parser;
+use fern::log_file;
 use japp::ErrorCode;
+use log::error;
 use parser::parse;
+use std::path::PathBuf;
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, clap::Parser)]
-enum CLI {
+enum Cli {
     Compile {
         file_name: PathBuf,
         #[clap(short, long)]
@@ -14,13 +16,18 @@ enum CLI {
 }
 
 fn main() -> Result<(), ErrorCode> {
-    let command = CLI::try_parse().map_err(|e| {
+    if let Err(e) = setup_logger() {
         eprintln!("{e}");
+        return Err(ErrorCode::LogSetup);
+    };
+
+    let command = Cli::try_parse().map_err(|e| {
+        error!("{e}");
         ErrorCode::CommandError
     })?;
 
     match command {
-        CLI::Compile {
+        Cli::Compile {
             file_name,
             out_name,
         } => {
@@ -34,7 +41,8 @@ fn main() -> Result<(), ErrorCode> {
             });
 
             let source = std::fs::read_to_string(&file_name).map_err(|e| {
-                eprintln!("{e}");
+                error!("Could not read file!");
+                error!("{e}");
                 ErrorCode::FileNotFound
             })?;
             let source = source.as_str();
@@ -59,4 +67,37 @@ fn main() -> Result<(), ErrorCode> {
             }
         }
     }
+}
+
+fn setup_logger() -> Result<(), fern::InitError> {
+    let file_log = fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "[{} {} {}] {}",
+                humantime::format_rfc3339_seconds(SystemTime::now()),
+                record.level(),
+                record.target(),
+                message
+            ))
+        })
+        .level(log::LevelFilter::Trace)
+        .chain(log_file("japp.log")?);
+
+    let stderr_log = fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "[{} {}] {}",
+                record.level(),
+                record.target(),
+                message
+            ))
+        })
+        .level(log::LevelFilter::Trace)
+        .chain(std::io::stderr());
+
+    fern::Dispatch::new()
+        .chain(file_log)
+        .chain(stderr_log)
+        .apply()?;
+    Ok(())
 }
