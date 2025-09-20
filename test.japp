@@ -1,4 +1,4 @@
-infixl _==_  1;
+infix  _==_  1;
 infixl _-_   2;
 infixl _*_   3;
 
@@ -6,11 +6,17 @@ fac : isize -> isize ;
 fn fac 0 = 1;
 fn fac n = n * fac (n - 1);
 
+const x = 2;
+
 fn main = {
+
+  z = y = 2;
+
 
   println(fac(0) * fac(0));
 
   println(
+    x,
     fac(5),
     fac(20) == fac(2 * 10),
     100 - 10 * 5 == 50,

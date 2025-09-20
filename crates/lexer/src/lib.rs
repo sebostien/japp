@@ -10,6 +10,7 @@ use interleave::Interleave;
 use nfa::Nfa;
 use token::Token;
 
+#[derive(Debug)]
 pub struct Lexer {
     nfa: Nfa,
 }
@@ -19,6 +20,7 @@ impl Lexer {
         let symbols = symbols
             .into_iter()
             .map(|symbol| {
+                println!("{}", symbol.as_ref());
                 symbol
                     .as_ref()
                     .chars()

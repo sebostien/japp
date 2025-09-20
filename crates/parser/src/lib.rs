@@ -42,8 +42,6 @@ pub fn parse(source: &str) -> Result<Program<'_>, Vec<ParseError<'_>>> {
         }
     }
 
-    println!("{:?}", operators.keys().collect::<Vec<_>>());
-
     let lexer = ExprLexer::new(operators.iter().map(|a| *a.0));
     let mut parser = ExprParser::new(operators);
     let mut parsed_program = Program {
@@ -52,13 +50,13 @@ pub fn parse(source: &str) -> Result<Program<'_>, Vec<ParseError<'_>>> {
 
     for decl in declarations {
         match decl {
-            UnparsedDecl::Let { ident, rhs } => {
+            UnparsedDecl::Const { ident, rhs } => {
                 let tokens = lexer.scan(rhs.byte_offset(), rhs.data());
                 let expr = parser.parse(tokens).map_err(|e| vec![e])?;
 
                 parsed_program
                     .declarations
-                    .insert(ident.inner(), Decl::Let { ident, rhs: expr });
+                    .insert(ident.inner(), Decl::Const { ident, rhs: expr });
             }
             UnparsedDecl::Fn { ident, args, body } => {
                 let body_tokens = lexer.scan(body.byte_offset(), body.data());
@@ -74,7 +72,7 @@ pub fn parse(source: &str) -> Result<Program<'_>, Vec<ParseError<'_>>> {
                     });
 
                 match prev {
-                    Decl::Let { .. } => panic!(),
+                    Decl::Const { .. } => panic!(),
                     Decl::Fn { ref mut rows, .. } => rows.push(FnRow { args, body }),
                 };
             }
@@ -89,7 +87,7 @@ pub fn parse(source: &str) -> Result<Program<'_>, Vec<ParseError<'_>>> {
                     });
 
                 match prev {
-                    Decl::Let { .. } => panic!(),
+                    Decl::Const { .. } => panic!(),
                     Decl::Fn {
                         ident,
                         ref mut type_def,
@@ -126,22 +124,22 @@ mod tests {
             infix + 2 ;
             infix * 2 ;
 
-            let a = a ;
-            let b = a + b ;
+            const a = a ;
+            const b = a + b ;
 
             fn add x y = x + y ;
 
-            let zz = add(a * b, b) ;
+            const zz = add(a * b, b) ;
         "#;
         let ast = parse(source).unwrap();
 
         assert_eq!(
             ast.to_string(),
             vec![
-                "let a = a ;",
+                "const a = a ;",
                 "fn add x y = ( x + y ) ;",
-                "let b = ( a + b ) ;",
-                "let zz = add ( ( a * b ) , b ) ;",
+                "const b = ( a + b ) ;",
+                "const zz = add ( ( a * b ) , b ) ;",
             ]
             .join("\n")
         );

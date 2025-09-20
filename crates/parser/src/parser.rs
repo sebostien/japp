@@ -65,15 +65,15 @@ fn ident(input: Source) -> IResult<Ident> {
 
     let ident_start = input.byte_offset();
 
-    // if input.starts_with(",") {
-    //     return Err(nom::Err::Error(ParseError {
-    //         span: input.byte_offset()..input.byte_offset() + 1,
-    //         error: ErrorKind::UnexpectedToken {
-    //             found: ",",
-    //             expected: "Ident",
-    //         },
-    //     }));
-    // }
+    if input.starts_with(",") {
+        return Err(nom::Err::Error(ParseError {
+            span: input.byte_offset()..input.byte_offset() + 1,
+            error: ErrorKind::UnexpectedToken {
+                found: ",",
+                expected: "Ident",
+            },
+        }));
+    }
 
     let (input, ident) = convert_nom_error(take_till(|c: char| c.is_whitespace())(input))?;
     let ident_span = ident.byte_offset()..ident.byte_offset() + ident.len();
@@ -174,9 +174,9 @@ fn infix_decl(input: Source) -> IResult<UnparsedDecl> {
     ))
 }
 
-fn let_decl(input: Source) -> IResult<UnparsedDecl> {
+fn const_decl(input: Source) -> IResult<UnparsedDecl> {
     let input = spaces(input);
-    let (input, _) = tag("let")(input)?;
+    let (input, _) = tag("const")(input)?;
     let input = spaces(input);
 
     let (input, ident) = ident(input)?;
@@ -188,7 +188,7 @@ fn let_decl(input: Source) -> IResult<UnparsedDecl> {
     let input = spaces(input);
     let (input, _) = tag(";")(input)?;
 
-    Ok((input, UnparsedDecl::Let { ident, rhs: expr }))
+    Ok((input, UnparsedDecl::Const { ident, rhs: expr }))
 }
 
 fn ty(input: Source) -> IResult<Spanned<Type>> {
@@ -286,10 +286,10 @@ fn fn_decl(input: Source) -> IResult<UnparsedDecl> {
 }
 
 fn decl(input: Source) -> IResult<UnparsedDecl> {
-    alt((infix_decl, let_decl, fn_decl, fn_sig))(input)
+    alt((infix_decl, const_decl, fn_decl, fn_sig))(input)
 }
 
-pub fn parse_program(input: &str) -> IResult<UnparsedProgram> {
+pub fn parse_program(input: &str) -> IResult<'_, UnparsedProgram<'_>> {
     let input = Source::new_for_ut8(input);
 
     let (input, decls) = many0(decl)(input)?;
@@ -305,18 +305,18 @@ mod tests {
     use crate::parse;
 
     #[test]
-    fn t_let() {
-        assert!(let_decl(Source::new_for_ut8("let a = -   -a;")).is_ok());
-        let a = let_decl(Source::new_for_ut8("\nlet \n c = \n -\n\n   a \n;"));
+    fn t_const() {
+        assert!(const_decl(Source::new_for_ut8("const a = -   -a;")).is_ok());
+        let a = const_decl(Source::new_for_ut8("\nconst \n c = \n -\n\n   a \n;"));
         assert!(a.is_ok(), "{a:?}");
-        assert!(let_decl(Source::new_for_ut8("let z =  -a  \n\n; ")).is_ok());
-        assert!(let_decl(Source::new_for_ut8("let a23 = a + b ;")).is_ok());
-        assert!(let_decl(Source::new_for_ut8("let b = a + b ;")).is_ok());
-        assert!(let_decl(Source::new_for_ut8(
-            "let add = 1+(2 + (3+((4)))) == (1 + 2 + 3 +4);"
+        assert!(const_decl(Source::new_for_ut8("const z =  -a  \n\n; ")).is_ok());
+        assert!(const_decl(Source::new_for_ut8("const a23 = a + b ;")).is_ok());
+        assert!(const_decl(Source::new_for_ut8("const b = a + b ;")).is_ok());
+        assert!(const_decl(Source::new_for_ut8(
+            "const add = 1+(2 + (3+((4)))) == (1 + 2 + 3 +4);"
         ))
         .is_ok());
-        assert!(let_decl(Source::new_for_ut8("let abc = a + b * c /(2/d) ;")).is_ok());
+        assert!(const_decl(Source::new_for_ut8("const abc = a + b * c /(2/d) ;")).is_ok());
     }
 
     #[test]

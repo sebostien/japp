@@ -10,7 +10,20 @@ pub struct ExprParser<'ops> {
 }
 
 impl<'ops> ExprParser<'ops> {
-    pub fn new(operators: HashMap<&'ops str, (Range<usize>, Fixity)>) -> Self {
+    pub fn new(mut operators: HashMap<&'ops str, (Range<usize>, Fixity)>) -> Self {
+        // TODO: Should probably not to this here :)
+        operators.insert(
+            "=",
+            (
+                0..0,
+                Fixity {
+                    prec: 0,
+                    assoc: Associativity::Right,
+                },
+            ),
+        );
+
+        println!("Expr Parser: {operators:?}");
         Self { operators }
     }
 
@@ -47,6 +60,7 @@ impl<'ops> ExprParser<'ops> {
         let mut lhs = self.primary(tokens)?;
 
         while let Some(op) = tokens.peek() {
+            println!("parse_expr:: {op}");
             let op = op.clone();
             let op = Ident::new(op.span, op.inner);
 
@@ -208,75 +222,31 @@ impl<'ops> ExprParser<'ops> {
 mod tests {
     use japp_util::Spanned;
     use std::collections::HashMap;
+    use std::ops::Range;
 
     use crate::ast::{Associativity, Expr, Fixity, Ident, Lit};
     use crate::expr_parser::ExprParser;
+    use crate::lexer::ExprLexer;
+
+    fn get_test_ops() -> HashMap<&'static str, (Range<usize>, Fixity)> {
+        [
+            ("+", 2, Associativity::Left),
+            ("-", 2, Associativity::Left),
+            ("*", 3, Associativity::Left),
+            ("/", 3, Associativity::Left),
+            ("^", 4, Associativity::Right),
+            ("==", 1, Associativity::None),
+            ("=", 0, Associativity::Right),
+        ]
+        .into_iter()
+        .map(|(op, prec, assoc)| (op, (0..0, Fixity { prec, assoc })))
+        .collect()
+    }
 
     #[test]
     fn test_expr_parser() {
-        let ops = HashMap::from_iter([
-            (
-                "+",
-                (
-                    0..0,
-                    Fixity {
-                        prec: 2,
-                        assoc: Associativity::Left,
-                    },
-                ),
-            ),
-            (
-                "-",
-                (
-                    0..0,
-                    Fixity {
-                        prec: 2,
-                        assoc: Associativity::Left,
-                    },
-                ),
-            ),
-            (
-                "*",
-                (
-                    0..0,
-                    Fixity {
-                        prec: 3,
-                        assoc: Associativity::Left,
-                    },
-                ),
-            ),
-            (
-                "/",
-                (
-                    0..0,
-                    Fixity {
-                        prec: 3,
-                        assoc: Associativity::Left,
-                    },
-                ),
-            ),
-            (
-                "^",
-                (
-                    0..0,
-                    Fixity {
-                        prec: 4,
-                        assoc: Associativity::Right,
-                    },
-                ),
-            ),
-            (
-                "==",
-                (
-                    0..0,
-                    Fixity {
-                        prec: 1,
-                        assoc: Associativity::None,
-                    },
-                ),
-            ),
-        ]);
-        let lexer = crate::lexer::ExprLexer::new(ops.keys().copied());
+        let ops = get_test_ops();
+        let lexer = ExprLexer::new(ops.keys().copied());
 
         let source = "(2*2+2*3^2/(18))+2^3^2*11+(2-3/3)==add(5638,1)-1";
         let tokens = lexer.scan(0, source);
@@ -289,17 +259,8 @@ mod tests {
 
     #[test]
     fn simple() {
-        let ops = HashMap::from_iter([(
-            "*",
-            (
-                0..0,
-                Fixity {
-                    prec: 3,
-                    assoc: Associativity::Left,
-                },
-            ),
-        )]);
-        let lexer = crate::lexer::ExprLexer::new(ops.keys().copied());
+        let ops = get_test_ops();
+        let lexer = ExprLexer::new(ops.keys().copied());
 
         let source = "add(2*2, 2)";
         let tokens = lexer.scan(0, source);
@@ -331,7 +292,7 @@ mod tests {
 
     #[test]
     fn extra_comma() {
-        let lexer = crate::lexer::ExprLexer::new([]);
+        let lexer = ExprLexer::new([]);
 
         let source = "add(2,,3)";
         let tokens = lexer.scan(0, source);
@@ -344,7 +305,7 @@ mod tests {
 
     #[test]
     fn block() {
-        let lexer = crate::lexer::ExprLexer::new([]);
+        let lexer = ExprLexer::new([]);
 
         let source = "{ 1 }";
         let tokens = lexer.scan(0, source);
@@ -356,6 +317,26 @@ mod tests {
         let source = "{ println(2, 4, 3) ; 1337 }";
         let tokens = lexer.scan(0, source);
         if let Err(e) = ExprParser::new(HashMap::default()).parse(tokens) {
+            eprintln!("{e:?}");
+            panic!("Expected ok");
+        }
+    }
+
+    #[test]
+    fn assign() {
+        let ops = get_test_ops();
+        let lexer = ExprLexer::new(ops.keys().copied());
+
+        let source = "x = 2";
+        let tokens = lexer.scan(0, source);
+        if let Err(e) = ExprParser::new(ops.clone()).parse(tokens) {
+            eprintln!("{e:?}");
+            panic!("Expected ok");
+        }
+
+        let source = "x = y = 3";
+        let tokens = lexer.scan(0, source);
+        if let Err(e) = ExprParser::new(ops).parse(tokens) {
             eprintln!("{e:?}");
             panic!("Expected ok");
         }

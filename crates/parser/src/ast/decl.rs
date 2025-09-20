@@ -3,7 +3,7 @@ use japp_util::Spanned;
 
 #[derive(Debug)]
 pub enum Decl<'a> {
-    Let {
+    Const {
         ident: Ident<'a>,
         rhs: Expr<'a>,
     },
@@ -44,8 +44,8 @@ pub struct FnRow<'a> {
 impl std::fmt::Display for Decl<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Let { ident, rhs: expr } => {
-                write!(f, "let {} = {expr} ;", ident.outer())
+            Self::Const { ident, rhs: expr } => {
+                write!(f, "const {} = {expr} ;", ident.outer())
             }
             Self::Fn {
                 ident,
@@ -118,7 +118,7 @@ pub enum UnparsedDecl<'a> {
         ident: Ident<'a>,
         fixity: Fixity,
     },
-    Let {
+    Const {
         ident: Ident<'a>,
         rhs: nom_span::Spanned<&'a str>,
     },

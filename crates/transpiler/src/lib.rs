@@ -23,10 +23,10 @@ pub fn transpile(mut program: Program) -> String {
 
     for (_, decl) in program.declarations.drain() {
         match decl {
-            Decl::Let { ident, rhs } => {
+            Decl::Const { ident, rhs } => {
                 let ident = idents.get(ident.outer());
                 out.push_str(
-                    format!("let {ident} = {};\n", transpile_expr(&mut idents, rhs)).as_str(),
+                    format!("const {ident} = {};\n", transpile_expr(&mut idents, rhs)).as_str(),
                 );
             }
             Decl::Fn {
@@ -102,6 +102,9 @@ fn transpile_expr(idents: &mut Idents, expr: Expr) -> String {
                     .join(",")
             )
         }
+        Expr::Assign { ident, expr } => {
+            format!("{} = {expr} ;", idents.get(ident.outer()))
+        }
         Expr::Lit(lit) => transpile_lit(idents, lit),
         Expr::Prefix { op, rhs } => format!(
             "( {} {} )",
@@ -114,6 +117,7 @@ fn transpile_expr(idents: &mut Idents, expr: Expr) -> String {
 
 fn transpile_lit(idents: &mut Idents, lit: Spanned<Lit>) -> String {
     match lit.inner {
+        Lit::Null => "null".to_string(),
         Lit::Bool(b) => b.to_string(),
         Lit::Int(n) => n.to_string(),
         Lit::Ident(i) => idents.get(i.outer()),
@@ -122,6 +126,7 @@ fn transpile_lit(idents: &mut Idents, lit: Spanned<Lit>) -> String {
 
 fn transpile_fn_row(idents: &mut Idents, body: FnRow) -> String {
     let ident = match body.args[0].inner() {
+        Lit::Null => todo!(),
         Lit::Bool(i) => format!("case {i}:"),
         Lit::Int(i) => format!("case {i}: "),
         Lit::Ident(i) => format!("default:\n\tlet {} = a0;", idents.get(i.outer())),

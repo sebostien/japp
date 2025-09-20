@@ -3,23 +3,26 @@ use japp_util::Spanned;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr<'a> {
+    /// `x + y`
     Binary {
         lhs: Box<Self>,
         op: Ident<'a>,
         rhs: Box<Self>,
     },
-    Prefix {
-        op: Ident<'a>,
-        rhs: Box<Self>,
-    },
-    FCall {
-        ident: Ident<'a>,
-        args: Vec<Self>,
-    },
+    /// `!x`
+    Prefix { op: Ident<'a>, rhs: Box<Self> },
+    /// `f(e1, e2)`
+    FCall { ident: Ident<'a>, args: Vec<Self> },
+    /// `{ e1 ; e2 ; }`
+    /// `{ e1 ; e2 ; last }`
     Block {
         exprs: Vec<Self>,
         last: Option<Box<Self>>,
     },
+    /// `x = 2;`
+    Assign { ident: Ident<'a>, expr: Box<Self> },
+    /// `2`
+    /// `true`
     Lit(Spanned<Lit<'a>>),
 }
 
@@ -76,8 +79,20 @@ impl<'a> Expr<'a> {
                 }
                 _ => panic!("Unknown function {ident:?}"),
             },
-            Expr::Block { .. } => {
-                todo!()
+            Expr::Assign { ident: _, expr } => {
+                // TODO: Assign in env
+                expr.eval()
+            }
+            Expr::Block { exprs, last } => {
+                for e in exprs {
+                    e.eval()?;
+                }
+
+                if let Some(last) = last {
+                    last.eval()
+                } else {
+                    Ok(Lit::Null)
+                }
             }
             Expr::Lit(l) => Ok(l.inner),
         }
@@ -90,6 +105,9 @@ impl std::fmt::Display for Expr<'_> {
             Self::Binary { lhs, op, rhs } => write!(f, "( {lhs} {} {rhs} )", op.inner()),
             Self::Prefix { op, rhs } => write!(f, "( {} {rhs} )", op.inner()),
             Self::Lit(lit) => lit.fmt(f),
+            Self::Assign { ident, expr } => {
+                write!(f, "{} = ( {expr} )", ident.inner())
+            }
             Self::FCall { ident, args } => {
                 write!(f, "{} (", ident.outer())?;
 

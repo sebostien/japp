@@ -1,7 +1,8 @@
 use lexer::{Lexer, Scanner};
 
-const DEFAULT_OPS: [&str; 6] = ["(", ")", ",", "{", "}", ";"];
+const DEFAULT_OPS: [&str; 7] = ["(", ")", ",", "{", "}", ";", "="];
 
+#[derive(Debug)]
 pub struct ExprLexer {
     lexer: Lexer,
 }
