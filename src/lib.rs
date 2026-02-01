@@ -54,7 +54,7 @@ pub fn make_parse_reports<'f>(
                     );
                 }
                 ErrorKind::Mismatched {
-                    start: _,
+                    start,
                     expected,
                     extra_info,
                 } => {
@@ -63,14 +63,19 @@ pub fn make_parse_reports<'f>(
                     );
 
                     if let Some(expected) = expected {
-                        // TODO: Fix error
+                        // TODO: Fix error. Showing wrong location
                         report = report.with_label(
-                            Label::new((file_name, expected.span.clone())).with_message(format!(
-                                "Expected here::: {:?} ::: {}",
-                                expected.inner, extra_info
+                            Label::new((file_name, start.span.clone())).with_message(format!(
+                                "Expected here::: {start:?} ::: token = {expected} ::: {extra_info}",
                             )),
                         );
                     }
+                }
+                ErrorKind::UnexpectedEof { expected } => {
+                    report = report.with_label(
+                        Label::new((file_name, error.span.clone()))
+                            .with_message(format!("Unexpected EOF, expected '{expected}'")),
+                    );
                 }
             };
 

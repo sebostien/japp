@@ -1,34 +1,27 @@
-infixr _=_   0;
 infix  _==_  1;
+infix  _!=_  1;
+infix  _||_  2;
+infix  _&&_  2;
 infixl _-_   2;
 infixl _+_   2;
 infixl _*_   3;
-infixr _/_   3;
 infixr !_    4;
 
-fac : isize -> isize ;
-fn fac 0 = 1;
-fn fac n = n * fac (n - 1);
+const x = 1337 ;
 
-add : isize -> isize -> isize ;
-fn add a b = a + b ;
-
-const x = 2;
+fac : i64 -> i64 ;
+fn fac n = match n {
+  0 -> 1 ;
+  n -> n * fac(n - 1) ;
+} ;
 
 fn main = {
-
-  z = y = 2;
-
-  println(fac(0) * fac(0));
-
-  1 == ( 2 == 3 );
-
-  println(!!!!true / 2 == !!!false);
-
+  println(5 * 4 * 3 * 2 * 1 == fac(5));
   println(
-    x,
-    fac(5),
+    fac(5) == 5 * fac(4),
+    fac(5) != fac(4),
     fac(20) == fac(2 * 10),
     100 - 10 * 5 == 50,
+    2 + 2 * 4 == 1 && 1 + 9
   )
 };

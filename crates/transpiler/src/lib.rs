@@ -1,5 +1,5 @@
 use japp_util::Spanned;
-use parser::{Decl, Expr, FnRow, Lit, Program};
+use parser::{Decl, Expr, Ident, Lit, Program};
 
 struct Idents {}
 
@@ -50,36 +50,24 @@ impl Transpile for Decl<'_> {
             }
             Decl::Fn {
                 ident,
-                mut rows,
                 type_def: _,
+                args,
+                body,
             } => {
                 let ident = idents.get(ident.outer());
-                if rows.is_empty() {
-                    return None;
-                }
 
-                if rows[0].args.is_empty() {
+                if args.is_empty() {
                     Some(format!(
                         "const {ident} = () => {};\n",
-                        rows.pop().unwrap().body.transpile(idents, indent)
+                        body.transpile(idents, indent)
                     ))
                 } else {
-                    let args = (0..)
-                        .take(rows[0].args.len())
-                        .map(|n| format!("a{n}"))
-                        .collect::<Vec<_>>()
-                        .join(", ");
+                    let args = args.iter().map(Ident::inner).collect::<Vec<_>>().join(", ");
 
                     let mut out = String::new();
 
                     out += &format!("const {ident} = ({args}) => {{\n");
-                    out += &format!("    switch ({args}) {{\n");
-
-                    for row in rows {
-                        out += &row.transpile(idents, 8);
-                    }
-
-                    out += "    };\n";
+                    out += &body.transpile(idents, indent + 4);
                     out += "};\n";
 
                     Some(out)
@@ -101,6 +89,40 @@ impl Transpile for Expr<'_> {
                     idents.get(op.inner()),
                     rhs.transpile(idents, indent)
                 )
+            }
+            Expr::Match { var, body } => {
+                let mut out = String::new();
+                out += &format!("{}switch ({var}) {{\n", " ".repeat(indent));
+
+                let spaces = " ".repeat(indent + 4);
+
+                for (pat, expr) in &body.cases {
+                    match pat {
+                        parser::Pattern::Lit(Lit::Null) => {
+                            out += &spaces;
+                            out += "case null:\n";
+                        }
+                        parser::Pattern::Lit(Lit::Bool(i)) => {
+                            out += &spaces;
+                            out += if *i { "case true:\n" } else { "case false:\n" };
+                        }
+                        parser::Pattern::Lit(Lit::Int(i)) => {
+                            out += &spaces;
+                            out += &format!("case {i}:\n");
+                        }
+                        parser::Pattern::Lit(Lit::Ident(i)) => {
+                            out += &spaces;
+                            out += "default:\n";
+                        }
+                    }
+
+                    out += &format!("{}return {expr};\n", " ".repeat(indent + 8));
+                }
+
+                out += &" ".repeat(indent);
+                out += "};\n";
+
+                out
             }
             Expr::FCall { ident, args } => {
                 let mut ident = idents.get(ident.outer());
@@ -147,43 +169,6 @@ impl Transpile for Lit<'_> {
             Lit::Int(n) => n.to_string(),
             Lit::Ident(i) => idents.get(i.outer()),
         }
-    }
-}
-
-impl Transpile for FnRow<'_> {
-    type Out = String;
-
-    fn transpile(self, idents: &mut Idents, indent: usize) -> Self::Out {
-        let mut out = String::new();
-        let spaces = " ".repeat(indent);
-
-        match self.args[0].inner() {
-            Lit::Null => {
-                out += &spaces;
-                out += "case null:\n";
-            }
-            Lit::Bool(i) => {
-                out += &spaces;
-                out += if *i { "case true:\n" } else { "case false:\n" };
-            }
-            Lit::Int(i) => {
-                out += &spaces;
-                out += &format!("case {i}:\n");
-            }
-            Lit::Ident(i) => {
-                out += &spaces;
-                out += "default:\n";
-                out += &" ".repeat(indent + 4);
-                out += &format!("let {} = a0;\n", idents.get(i.outer()));
-            }
-        }
-
-        out += &format!(
-            "{}return {};\n",
-            " ".repeat(indent + 4),
-            self.body.transpile(idents, indent + 8)
-        );
-        out
     }
 }
 

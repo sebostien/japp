@@ -9,8 +9,10 @@ members = ["crates/*"]
 [workspace.dependencies]
 lexer = { path = "./crates/lexer/" }
 parser = { path = "./crates/parser/" }
-japp_util = { path = "./crates/japp_util//" }
+japp_util = { path = "./crates/japp_util/" }
 transpiler = { path = "./crates/transpiler/" }
+compiler = { path = "./crates/compiler/" }
+typecheck = { path = "./crates/typecheck/" }
 
 nom = "7.1.3"
 nom-span = "0.1.2"
@@ -20,6 +22,8 @@ clap = { version = "4.5.35", features = ["derive"] }
 log = "0.4.28"
 fern = "0.7.1"
 humantime = "2.3.0"
+cranelift-frontend = "0.124.0"
+cranelift-codegen = "0.124.0"
 
 # dev-dependencies
 rand = "0.8.5"
@@ -28,9 +32,12 @@ proptest = { version = "1.6.0", features = ["timeout"] }
 
 
 [dependencies]
-ariadne = { workspace = true }
 parser = { workspace = true }
 transpiler = { workspace = true }
+compiler = { workspace = true }
+typecheck = { workspace = true }
+
+ariadne = { workspace = true }
 clap = { workspace = true }
 log = { workspace = true }
 fern = { workspace = true }
