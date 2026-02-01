@@ -14,6 +14,9 @@ pub enum ErrorKind<'source> {
     Multi(Vec<Self>),
     Nom(nom::error::ErrorKind),
     InvalidPrecedence(String),
+    UnexpectedEof {
+        expected: &'source str,
+    },
     UnexpectedToken {
         found: &'source str,
         expected: &'source str,
@@ -25,8 +28,8 @@ pub enum ErrorKind<'source> {
         error: String,
     },
     Mismatched {
-        start: &'source str,
-        expected: Option<Spanned<&'source str>>,
+        start: Spanned<&'source str>,
+        expected: Option<&'source str>,
         extra_info: &'source str,
     },
 }
@@ -40,6 +43,12 @@ impl ParseError<'_> {
             ErrorKind::Nom(kind) => {
                 report = report.with_label(
                     Label::new((file_name, self.span.clone())).with_message(format!("{kind:?}")),
+                );
+            }
+            ErrorKind::UnexpectedEof { expected } => {
+                report = report.with_label(
+                    Label::new((file_name, self.span.clone()))
+                        .with_message(format!("Unexpected eof, expected '{expected}'")),
                 );
             }
             ErrorKind::InvalidPrecedence(_) => todo!(),
@@ -65,7 +74,7 @@ impl ParseError<'_> {
                 );
             }
             ErrorKind::Mismatched {
-                start: _,
+                start,
                 expected,
                 extra_info,
             } => {
@@ -74,11 +83,10 @@ impl ParseError<'_> {
                 );
 
                 if let Some(expected) = expected {
-                    // TODO: Fix error
                     report = report.with_label(
-                        Label::new((file_name, expected.span.clone())).with_message(format!(
+                        Label::new((file_name, start.span.clone())).with_message(format!(
                             "Expected here::: {:?} ::: {}",
-                            expected.inner, extra_info
+                            expected, extra_info
                         )),
                     );
                 }

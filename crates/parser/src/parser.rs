@@ -268,7 +268,9 @@ fn fn_decl(input: Source) -> IResult<UnparsedDecl> {
     let (input, _) = space1(input)?;
 
     let (input, name) = ident(input)?;
-    let (input, args) = many0(lit)(input)?;
+    let args_start = input.byte_offset();
+    let (input, args) = many0(ident)(input)?;
+    let args_end = input.byte_offset();
     let (input, _) = tag("=")(input)?;
 
     let (input, body) = unparsed_expr(input)?;
@@ -322,6 +324,10 @@ mod tests {
     #[test]
     fn t_fn() {
         assert!(fn_decl(Source::new_for_ut8("\n fn add x y = x + y; ")).is_ok());
+        assert!(fn_decl(Source::new_for_ut8(
+            "fn add 0 y = y ;\n fn add x y = 1 + add (x - 1) y ; "
+        ))
+        .is_ok());
     }
 
     #[test]
@@ -338,6 +344,16 @@ mod tests {
         assert!(infix_decl(Source::new_for_ut8("\ninfixl jasdk 10;")).is_ok());
         assert!(infix_decl(Source::new_for_ut8("infixr asld 10;")).is_ok());
         assert!(infix_decl(Source::new_for_ut8("infixr >=> 0;")).is_ok());
+    }
+
+    #[test]
+    fn t_match() {
+        // Simple
+        assert!(unparsed_expr(Source::new_for_ut8("match n { x -> x ; } ;")).is_ok());
+        // Last semi in match should be optional
+        assert!(unparsed_expr(Source::new_for_ut8("match n { x -> x };")).is_ok());
+        // Multiple rows
+        assert!(unparsed_expr(Source::new_for_ut8("match n { 1 -> 2 ; z -> z + 1 ; } ;")).is_ok());
     }
 
     #[test]
@@ -417,9 +433,6 @@ mod tests {
 
     #[test]
     fn t_error_multi_fixity() {
-        test_parser_err!(
-            "infixr a 0; infix a 1;",
-            "Precedence too big. Must fit in usize"
-        );
+        test_parser_err!("infixr a 0; infix a 1;", "Duplicate fixity declared.");
     }
 }

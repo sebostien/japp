@@ -1,7 +1,10 @@
+use japp_util::Spanned;
 use lexer::ExprLexer;
 use nom::Finish;
 use std::collections::HashMap;
 use std::ops::Range;
+
+// TODO: Remove Binary and Prefix and make them use FCall instead
 
 mod ast;
 mod error;
@@ -9,7 +12,7 @@ mod expr_parser;
 mod lexer;
 mod parser;
 
-pub use ast::{Decl, Expr, Fixity, FnRow, Ident, Lit, Program};
+pub use ast::{Decl, Expr, Fixity, Ident, Lit, MatchBody, Pattern, Program, Type};
 pub use error::{ErrorKind, ParseError};
 
 use ast::UnparsedDecl;
@@ -60,21 +63,21 @@ pub fn parse(source: &str) -> Result<Program<'_>, Vec<ParseError<'_>>> {
             }
             UnparsedDecl::Fn { ident, args, body } => {
                 let body_tokens = lexer.scan(body.byte_offset(), body.data());
-                let body = parser.parse(body_tokens).map_err(|e| vec![e])?;
-
-                let prev = parsed_program
-                    .declarations
-                    .entry(ident.inner())
-                    .or_insert(Decl::Fn {
-                        ident,
-                        type_def: None,
-                        rows: vec![],
-                    });
-
-                match prev {
-                    Decl::Const { .. } => panic!(),
-                    Decl::Fn { ref mut rows, .. } => rows.push(FnRow { args, body }),
+                let body_parsed = parser.parse(body_tokens).map_err(|e| vec![e])?;
+                let fn_parsed = Decl::Fn {
+                    ident: ident.clone(),
+                    type_def: None,
+                    args,
+                    body: body_parsed,
                 };
+
+                if let Some(prev) = parsed_program.declarations.insert(ident.inner(), fn_parsed) {
+                    if let Decl::Fn { body, .. } = prev {
+                        if body != Expr::Lit(Spanned::new(Lit::Null, 0..0)) {
+                            todo!("Multiple definitions for function {}", ident.inner())
+                        }
+                    }
+                }
             }
             UnparsedDecl::FnSig { ident, sig } => {
                 let prev = parsed_program
@@ -83,7 +86,8 @@ pub fn parse(source: &str) -> Result<Program<'_>, Vec<ParseError<'_>>> {
                     .or_insert(Decl::Fn {
                         ident,
                         type_def: None,
-                        rows: vec![],
+                        args: vec![],
+                        body: Expr::Lit(Spanned::new(Lit::Null, 0..0)),
                     });
 
                 match prev {
@@ -151,18 +155,21 @@ mod tests {
             infix - 1 ;
             infix * 2 ;
 
-            fn fac 0 = 1 ;
-            fn fac n = n * fac(n - 1);
+            fn fac n = match n {
+                0 -> 1               ;
+                n -> n * fac (n - 1) ;
+            } ;
 
             fn main = fac(5) ;
         "#;
         let ast = parse(source).unwrap();
 
+        println!("{:#?}", ast);
+
         assert_eq!(
             ast.to_string(),
             vec![
-                "fn fac 0 = 1 ;",
-                "fn fac n = ( n * fac ( ( n - 1 ) ) ) ;",
+                "fn fac n = match n { 0 -> 1 ; n -> ( n * fac ( ( n - 1 ) ) ) ; } ;",
                 "fn main = fac ( 5 ) ;",
             ]
             .join("\n")

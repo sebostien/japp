@@ -1,15 +1,13 @@
+use std::collections::HashMap;
+use std::ops::{Deref, Range};
+
 mod decl;
 mod expr;
 mod fixity;
 mod lit;
 
-use std::{
-    collections::HashMap,
-    ops::{Deref, Range},
-};
-
-pub use decl::{Decl, FnRow, Type, UnparsedDecl};
-pub use expr::Expr;
+pub use decl::{Decl, Type, UnparsedDecl};
+pub use expr::{Expr, MatchBody, Pattern};
 pub use fixity::{Associativity, Fixity};
 pub use lit::Lit;
 

@@ -1,4 +1,4 @@
-use super::{Expr, Fixity, Ident, Lit};
+use super::{Expr, Fixity, Ident};
 use japp_util::Spanned;
 
 #[derive(Debug)]
@@ -10,7 +10,8 @@ pub enum Decl<'a> {
     Fn {
         ident: Ident<'a>,
         type_def: Option<Spanned<Type<'a>>>,
-        rows: Vec<FnRow<'a>>,
+        args: Vec<Ident<'a>>,
+        body: Expr<'a>,
     },
 }
 
@@ -35,12 +36,6 @@ pub enum Type<'a> {
     },
 }
 
-#[derive(Debug)]
-pub struct FnRow<'a> {
-    pub args: Vec<Spanned<Lit<'a>>>,
-    pub body: Expr<'a>,
-}
-
 impl std::fmt::Display for Decl<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -50,33 +45,19 @@ impl std::fmt::Display for Decl<'_> {
             Self::Fn {
                 ident,
                 type_def,
-                rows,
+                args,
+                body,
             } => {
                 if let Some(type_def) = type_def {
-                    // TODO: Print type_def
                     writeln!(f, "{} : {type_def} ;", ident.outer())?;
                 }
 
-                let rows = rows
+                let args = args
                     .iter()
-                    .map(|FnRow { args, body }| {
-                        let args = args
-                            .iter()
-                            .map(Spanned::inner)
-                            .map(Lit::to_string)
-                            .collect::<Vec<_>>()
-                            .join(" ");
+                    .map(|arg| arg.inner().to_string() + " ")
+                    .collect::<String>();
 
-                        if args.is_empty() {
-                            format!("fn {} = {body} ;", ident.outer())
-                        } else {
-                            format!("fn {} {args} = {body} ;", ident.outer())
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-
-                write!(f, "{rows}")
+                write!(f, "fn {} {args}= {body} ;", ident.outer)
             }
         }
     }
@@ -124,7 +105,7 @@ pub enum UnparsedDecl<'a> {
     },
     Fn {
         ident: Ident<'a>,
-        args: Vec<Spanned<Lit<'a>>>,
+        args: Vec<Ident<'a>>,
         body: nom_span::Spanned<&'a str>,
     },
     FnSig {

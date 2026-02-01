@@ -1,3 +1,5 @@
+use core::fmt;
+
 use super::{Ident, Lit};
 use japp_util::Spanned;
 
@@ -10,10 +12,20 @@ pub enum Expr<'a> {
         op: Ident<'a>,
         rhs: Box<Self>,
     },
+    Match {
+        var: Box<Self>,
+        body: MatchBody<'a>,
+    },
     /// `!x`
-    Prefix { op: Ident<'a>, rhs: Box<Self> },
+    Prefix {
+        op: Ident<'a>,
+        rhs: Box<Self>,
+    },
     /// `f(e1, e2)`
-    FCall { ident: Ident<'a>, args: Vec<Self> },
+    FCall {
+        ident: Ident<'a>,
+        args: Vec<Self>,
+    },
     /// `{ e1 ; e2 ; }`
     /// `{ e1 ; e2 ; last }`
     Block {
@@ -23,6 +35,16 @@ pub enum Expr<'a> {
     /// `2`
     /// `true`
     Lit(Spanned<Lit<'a>>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MatchBody<'a> {
+    pub cases: Vec<(Pattern<'a>, Expr<'a>)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Pattern<'a> {
+    Lit(Lit<'a>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -90,14 +112,16 @@ impl<'a> Expr<'a> {
                 }
             }
             Expr::Lit(l) => Ok(l.inner),
+            Expr::Match { .. } => todo!(),
         }
     }
 }
 
-impl std::fmt::Display for Expr<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Expr<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Binary { lhs, op, rhs } => write!(f, "( {lhs} {} {rhs} )", op.inner()),
+            Self::Match { var, body } => write!(f, "match {var} {{ {body}}}"),
             Self::Prefix { op, rhs } => write!(f, "( {} {rhs} )", op.inner()),
             Self::Lit(lit) => lit.fmt(f),
             Self::FCall { ident, args } => {
@@ -129,6 +153,24 @@ impl std::fmt::Display for Expr<'_> {
 
                 write!(f, "}}")
             }
+        }
+    }
+}
+
+impl fmt::Display for MatchBody<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (pat, body) in &self.cases {
+            write!(f, "{pat} -> {body} ; ")?;
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for Pattern<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Pattern::Lit(lit) => lit.fmt(f),
         }
     }
 }

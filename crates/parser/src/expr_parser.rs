@@ -4,15 +4,17 @@ use std::ops::Range;
 use std::{collections::HashMap, iter::Peekable};
 
 use crate::ast::{Associativity, Expr, Fixity, Ident, Lit};
-use crate::{ErrorKind, ParseError};
+use crate::{ErrorKind, MatchBody, ParseError, Pattern};
 
 pub struct ExprParser<'ops> {
     operators: HashMap<&'ops str, (Range<usize>, Fixity)>,
 }
 
+pub type ParseResult<'source, E = Expr<'source>> = Result<E, ParseError<'source>>;
+
 impl<'ops> ExprParser<'ops> {
     pub fn new(mut operators: HashMap<&'ops str, (Range<usize>, Fixity)>) -> Self {
-        // TODO: Should probably not to this here :)
+        // TODO: Should probably not do this here
         operators.insert(
             "=",
             (
@@ -31,7 +33,7 @@ impl<'ops> ExprParser<'ops> {
     pub fn parse<'source, I: IntoIterator<Item = Spanned<&'source str>>>(
         &mut self,
         source: I,
-    ) -> Result<Expr<'source>, ParseError<'source>> {
+    ) -> ParseResult<'source> {
         let mut source = source.into_iter().peekable();
         let expr = self.parse_expr(&mut source, 0)?;
 
@@ -53,7 +55,7 @@ impl<'ops> ExprParser<'ops> {
         &mut self,
         tokens: &mut Peekable<I>,
         precedence: usize,
-    ) -> Result<Expr<'source>, ParseError<'source>>
+    ) -> ParseResult<'source>
     where
         I: Iterator<Item = Spanned<&'source str>>,
     {
@@ -108,7 +110,7 @@ impl<'ops> ExprParser<'ops> {
         &mut self,
         tokens: &mut Peekable<I>,
         _precedence: usize,
-    ) -> Result<Expr<'source>, ParseError<'source>>
+    ) -> ParseResult<'source>
     where
         I: Iterator<Item = Spanned<&'source str>>,
     {
@@ -145,10 +147,10 @@ impl<'ops> ExprParser<'ops> {
                     }
                     None => {
                         return Err(ParseError {
-                            span: token.span,
+                            span: token.span.clone(),
                             error: ErrorKind::Mismatched {
-                                start: "{",
-                                expected: None,
+                                start: token,
+                                expected: Some("}"),
                                 extra_info: "",
                             },
                         });
@@ -164,6 +166,14 @@ impl<'ops> ExprParser<'ops> {
             Ok(Expr::Block {
                 exprs: inner_exprs,
                 last,
+            })
+        } else if token.inner == "match" {
+            let var = self.parse_expr(tokens, 0)?;
+            let body = self.parse_match_block(tokens)?;
+
+            Ok(Expr::Match {
+                var: Box::new(var),
+                body,
             })
         } else if let Some((_, fix)) = self.operators.get(token.inner) {
             // TODO: Precedence
@@ -187,11 +197,40 @@ impl<'ops> ExprParser<'ops> {
         }
     }
 
+    fn consume<'source, I>(
+        &mut self,
+        tokens: &mut Peekable<I>,
+        expected: &'source str,
+    ) -> ParseResult<'source, Spanned<&'source str>>
+    where
+        I: Iterator<Item = Spanned<&'source str>>,
+    {
+        if let Some(token) = tokens.next() {
+            let span = token.span.clone();
+            if token.inner == expected {
+                Ok(token)
+            } else {
+                Err(ParseError {
+                    span: span,
+                    error: ErrorKind::UnexpectedToken {
+                        found: token.inner,
+                        expected,
+                    },
+                })
+            }
+        } else {
+            Err(ParseError {
+                span: 0..0,
+                error: ErrorKind::UnexpectedEof { expected },
+            })
+        }
+    }
+
     fn parse_f_call<'source, I>(
         &mut self,
         tokens: &mut Peekable<I>,
         ident: Ident<'source>,
-    ) -> Result<Expr<'source>, ParseError<'source>>
+    ) -> ParseResult<'source>
     where
         I: Iterator<Item = Spanned<&'source str>>,
     {
@@ -222,13 +261,70 @@ impl<'ops> ExprParser<'ops> {
         }
 
         Err(ParseError {
-            span: paren_start.span,
+            span: paren_start.span.clone(),
             error: ErrorKind::Mismatched {
-                start: paren_start.inner,
-                expected: None,
+                start: paren_start,
+                expected: Some(")"),
                 extra_info: "This '(' was not closed",
             },
         })
+    }
+
+    fn parse_match_block<'source, I>(
+        &mut self,
+        tokens: &mut Peekable<I>,
+    ) -> ParseResult<'source, MatchBody<'source>>
+    where
+        I: Iterator<Item = Spanned<&'source str>>,
+    {
+        let open_brace = self.consume(tokens, "{")?;
+        let mut cases = Vec::new();
+
+        'outer: loop {
+            let pattern = self.parse_pattern(tokens)?;
+            let _arrow = self.consume(tokens, "->")?;
+            let body = self.parse_expr(tokens, 0)?;
+
+            cases.push((pattern, body));
+
+            loop {
+                match tokens.peek().map(|t| *t.inner()) {
+                    Some(";") => {
+                        let _ = tokens.next();
+                        continue;
+                    }
+                    Some("}") => {
+                        let _ = tokens.next();
+                        break 'outer;
+                    }
+                    None => {
+                        return Err(ParseError {
+                            span: open_brace.span.clone(),
+                            error: ErrorKind::Mismatched {
+                                start: open_brace,
+                                expected: Some("}"),
+                                extra_info: "",
+                            },
+                        });
+                    }
+                    _ => {
+                        break;
+                    }
+                }
+            }
+        }
+
+        Ok(MatchBody { cases })
+    }
+
+    fn parse_pattern<'source, I>(
+        &mut self,
+        tokens: &mut Peekable<I>,
+    ) -> ParseResult<'source, Pattern<'source>>
+    where
+        I: Iterator<Item = Spanned<&'source str>>,
+    {
+        Ok(Pattern::Lit(Lit::from(tokens.next().unwrap())))
     }
 }
 

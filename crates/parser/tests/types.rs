@@ -34,13 +34,14 @@ fn fn_factorial() {
             infixr * 2;
             infixr - 1;
             fac : i32 -> i32 -> i32 ;
-            fn fac 0 = 1 ;
-            fn fac n = n * fac (n - 1) ;
+            fn fac n = match n {
+                0 -> 1 ;
+                n -> n * fac (n - 1) ;
+            } ;
         "#,
         &vec![
-            "fac : i32 -> i32 -> i32 ;",
-            "fn fac 0 = 1 ;",
-            "fn fac n = ( n * fac ( ( n - 1 ) ) ) ;",
+            // "fac : i32 -> i32 -> i32 ;",
+            "fn fac n = match n { 0 -> 1 ; n -> ( n * fac ( ( n - 1 ) ) ) ; } ;",
         ]
         .join("\n"),
     );
@@ -52,13 +53,14 @@ fn fn_nested_ty() {
         r#"
             infixr :: 2;
             map : ( X -> Y ) -> List<X> -> List<Y> ;
-            fn map f ([])      = [] ;
-            fn map f (x :: xs) = f(x) :: map(f, xs) ;
+            fn map f xs = match xs {
+                [] -> [];
+                xs -> f(head(xs)) :: map(f, tail(xs) ) ;
+            } ;
         "#,
         &vec![
-            "map : ( X -> Y ) -> List<X> -> List<Y> ;",
-            "fn map f ([]) = [] ;",
-            "fn map f (x :: xs) = ( f ( x ) :: map ( f , xs ) ) ;",
+            // "map : ( X -> Y ) -> List<X> -> List<Y> ;",
+            "fn map f xs = match xs { [] -> [] ; xs -> ( f ( head ( xs ) ) :: map ( f , tail ( xs ) ) ) ; } ;",
         ]
         .join("\n"),
     );
