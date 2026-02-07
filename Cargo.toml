@@ -13,6 +13,7 @@ japp_util = { path = "./crates/japp_util/" }
 transpiler = { path = "./crates/transpiler/" }
 compiler = { path = "./crates/compiler/" }
 typecheck = { path = "./crates/typecheck/" }
+spressions = { path = "./crates/spressions/" }
 
 nom = "7.1.3"
 nom-span = "0.1.2"
