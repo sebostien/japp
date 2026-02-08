@@ -49,3 +49,42 @@ impl FromStr for Spression {
             .ok_or(ParseError("Expected expr".to_string()))
     }
 }
+
+impl Spression {
+    fn fmt_pretty(&self, f: &mut std::fmt::Formatter<'_>, indent: usize) -> std::fmt::Result {
+        use std::fmt::Display;
+
+        let Self {
+            node,
+            span,
+            data,
+            children,
+        } = self;
+
+        write!(f, "({node}")?;
+
+        if !data.is_empty() {
+            " ".fmt(f)?;
+            data.join(" ").fmt(f)?;
+        }
+
+        for child in children {
+            "\n".fmt(f)?;
+            " ".repeat(indent).fmt(f)?;
+            child.fmt_pretty(f, indent + 2)?;
+        }
+
+        ")".fmt(f)?;
+        if let Some(Range { start, end }) = span {
+            write!(f, ":{start}..{end}")?;
+        }
+
+        Ok(())
+    }
+}
+
+impl std::fmt::Display for Spression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.fmt_pretty(f, 2)
+    }
+}
