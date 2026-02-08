@@ -1,4 +1,5 @@
 extern crate proc_macro;
+
 use glob::glob;
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
@@ -26,10 +27,27 @@ pub fn test_glob(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let mut out = TokenStream::from(test.to_token_stream());
 
-    for path in glob(&glob_lit.value()).expect("Could not parse glob") {
+    let call_file = proc_macro2::Span::call_site().local_file().unwrap();
+    let call_dir = call_file.parent().unwrap().to_path_buf();
+
+    let glob_path = {
+        let mut x = call_dir.clone();
+        x.push(&glob_lit.value());
+        x.to_str().unwrap().to_string()
+    };
+
+    for path in glob(&glob_path).expect("Could not parse glob") {
         let path = path.unwrap();
         let test_name = path.with_extension("").to_str().unwrap().replace("/", "_");
-        let path_str = path.to_str().unwrap();
+        let path_str = path
+            .to_str()
+            .unwrap()
+            // This is some stupid shit!
+            // TODO: Find a way to glob from crate root instead of workspace.
+            //       Currently files yield relative to workspace but tests read from crate.
+            //       Easiest to just impl own glob
+            .trim_start_matches(&call_dir.parent().unwrap().to_string_lossy().to_string())
+            .trim_start_matches("/");
 
         let gen_name = Ident::new(&test_name, Span::call_site());
 

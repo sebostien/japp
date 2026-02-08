@@ -1,3 +1,4 @@
+use spressions::{Spression, ToSpression};
 use std::collections::HashMap;
 use std::ops::{Deref, Range};
 
@@ -92,5 +93,31 @@ impl<'a> Ident<'a> {
 
     pub fn inner_span(&self) -> Range<usize> {
         self.inner_span.clone()
+    }
+}
+
+impl<'a> ToSpression for Program<'a> {
+    fn to_spression(self) -> Spression {
+        Spression {
+            node: "Program".to_string(),
+            span: None,
+            data: Vec::new(),
+            children: self
+                .declarations
+                .into_values()
+                .map(ToSpression::to_spression)
+                .collect(),
+        }
+    }
+}
+
+impl<'a> ToSpression for Ident<'a> {
+    fn to_spression(self) -> Spression {
+        Spression {
+            node: "Ident".to_string(),
+            span: Some(self.outer_span.clone()),
+            data: vec![format!("\"{}\"", self.outer.to_string())],
+            children: Vec::new(),
+        }
     }
 }

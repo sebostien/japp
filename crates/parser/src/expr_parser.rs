@@ -14,17 +14,13 @@ pub type ParseResult<'source, E = Expr<'source>> = Result<E, ParseError<'source>
 
 impl<'ops> ExprParser<'ops> {
     pub fn new(mut operators: HashMap<&'ops str, (Range<usize>, Fixity)>) -> Self {
-        // TODO: Should probably not do this here
-        operators.insert(
-            "=",
-            (
-                0..0,
-                Fixity {
-                    prec: 0,
-                    assoc: Associativity::Right,
-                },
-            ),
-        );
+        operators.entry("=").or_insert((
+            0..0,
+            Fixity {
+                prec: 0,
+                assoc: Associativity::Right,
+            },
+        ));
 
         Self { operators }
     }
@@ -211,7 +207,7 @@ impl<'ops> ExprParser<'ops> {
                 Ok(token)
             } else {
                 Err(ParseError {
-                    span: span,
+                    span,
                     error: ErrorKind::UnexpectedToken {
                         found: token.inner,
                         expected,

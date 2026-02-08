@@ -1,7 +1,8 @@
 use core::fmt;
+use japp_util::Spanned;
+use spressions::{Spression, ToSpression};
 
 use super::{Ident, Lit};
-use japp_util::Spanned;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr<'a> {
@@ -171,6 +172,59 @@ impl fmt::Display for Pattern<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Pattern::Lit(lit) => lit.fmt(f),
+        }
+    }
+}
+
+impl<'a> ToSpression for Expr<'a> {
+    fn to_spression(self) -> Spression {
+        match self {
+            Expr::Binary { lhs, op, rhs } => Spression {
+                node: op.outer.to_string(),
+                span: None,
+                data: Vec::new(),
+                children: vec![lhs.to_spression(), rhs.to_spression()],
+            },
+            Expr::Match { var, body } => todo!(),
+            Expr::Prefix { op, rhs } => todo!(),
+            Expr::FCall { ident, args } => {
+                let mut children = vec![ident.to_spression()];
+                children.append(&mut args.into_iter().map(|a| a.to_spression()).collect());
+                Spression {
+                    node: "FCall".to_string(),
+                    span: None,
+                    data: Vec::new(),
+                    children,
+                }
+            }
+            Expr::Block { exprs, last } => {
+                let mut children = exprs
+                    .into_iter()
+                    .map(Expr::to_spression)
+                    .collect::<Vec<_>>();
+
+                if let Some(last) = last {
+                    children.push(Spression {
+                        node: "Last".to_string(),
+                        span: None,
+                        data: Vec::new(),
+                        children: vec![last.to_spression()],
+                    });
+                }
+
+                Spression {
+                    node: "Block".to_string(),
+                    span: None,
+                    data: Vec::new(),
+                    children,
+                }
+            }
+            Expr::Lit(Spanned { span, inner }) => Spression {
+                node: "Lit".to_string(),
+                span: Some(span),
+                data: Vec::new(),
+                children: vec![inner.to_spression()],
+            },
         }
     }
 }

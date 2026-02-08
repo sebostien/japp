@@ -1,5 +1,6 @@
 use super::{Expr, Fixity, Ident};
 use japp_util::Spanned;
+use spressions::{Spression, ToSpression};
 
 #[derive(Debug)]
 pub enum Decl<'a> {
@@ -101,15 +102,56 @@ pub enum UnparsedDecl<'a> {
     },
     Const {
         ident: Ident<'a>,
-        rhs: nom_span::Spanned<&'a str>,
+        rhs: Spanned<&'a str>,
     },
     Fn {
         ident: Ident<'a>,
         args: Vec<Ident<'a>>,
-        body: nom_span::Spanned<&'a str>,
+        body: Spanned<&'a str>,
     },
     FnSig {
         ident: Ident<'a>,
         sig: Spanned<Type<'a>>,
     }, // Error, // TODO: Error recovery
+}
+
+impl<'a> ToSpression for Decl<'a> {
+    fn to_spression(self) -> Spression {
+        match self {
+            Decl::Const { ident, rhs } => Spression {
+                node: "Const".to_string(),
+                span: None,
+                data: vec![format!("\"{}\"", ident.to_string())],
+                children: vec![rhs.to_spression()],
+            },
+            Decl::Fn {
+                ident,
+                type_def: _, // TODO: Should not ignore here
+                args,
+                body,
+            } => {
+                let children = vec![
+                    Spression {
+                        node: "Args".to_string(),
+                        span: None,
+                        data: Vec::new(),
+                        children: args.into_iter().map(|a| a.to_spression()).collect(),
+                    },
+                    Spression {
+                        node: "Body".to_string(),
+                        span: None,
+                        data: Vec::new(),
+                        children: vec![body.to_spression()],
+                    },
+                ];
+
+                Spression {
+                    node: "Fn".to_string(),
+                    span: None,
+                    data: vec![format!("\"{}\"", ident.to_string())],
+                    children,
+                }
+            }
+        }
+    }
 }

@@ -1,4 +1,5 @@
 use parser::parse;
+use spressions::{Spression, ToSpression};
 
 fn test_program(source: &str, expected: &str) {
     let ast = parse(source);
@@ -64,4 +65,30 @@ fn fn_nested_ty() {
         ]
         .join("\n"),
     );
+}
+
+#[test]
+fn fn_test_const() {
+    let source: &str = r#"fn id x = x ;"#;
+    let ast = parse(source).unwrap().to_spression();
+
+    let expected = r#"
+        (Program
+            (Fn "id"
+                (Args
+                    (Ident "x"):6..7)
+                (Body
+                    (Lit
+                        (Ident "x"):10..11
+                    ):10..11
+                )
+            )
+        )
+    "#
+    .parse()
+    .unwrap();
+
+    if ast != expected {
+        panic!("Expected:\n{ast}\nTo equal:\n{expected}");
+    }
 }

@@ -4,13 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+spressions = { workspace = true }
+japp_util = { workspace = true }
+
 nom = { workspace = true }
 nom-span = { workspace = true }
 lexer = { workspace = true }
-japp_util = { workspace = true }
 ariadne = { workspace = true }
 petgraph = { workspace = true }
 log = { workspace = true }
 
 [dev-dependencies]
 rand = { workspace = true }
+macro_japp = { workspace = true }

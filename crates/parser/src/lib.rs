@@ -6,18 +6,18 @@ use std::ops::Range;
 
 // TODO: Remove Binary and Prefix and make them use FCall instead
 
-mod ast;
+pub mod ast;
 mod error;
 mod expr_parser;
 mod lexer;
 mod parser;
 
-pub use ast::{Decl, Expr, Fixity, Ident, Lit, MatchBody, Pattern, Program, Type};
-pub use error::{ErrorKind, ParseError};
-
 use ast::UnparsedDecl;
 use expr_parser::ExprParser;
 use parser::parse_program;
+
+pub use ast::{Decl, Expr, Fixity, Ident, Lit, MatchBody, Pattern, Program, Type};
+pub use error::{ErrorKind, ParseError};
 
 pub fn parse(source: &str) -> Result<Program<'_>, Vec<ParseError<'_>>> {
     let (_, program) = parse_program(source).finish().map_err(|e| vec![e])?;
@@ -54,7 +54,7 @@ pub fn parse(source: &str) -> Result<Program<'_>, Vec<ParseError<'_>>> {
     for decl in declarations {
         match decl {
             UnparsedDecl::Const { ident, rhs } => {
-                let tokens = lexer.scan(rhs.byte_offset(), rhs.data());
+                let tokens = lexer.scan(rhs.span.start, rhs.inner);
                 let expr = parser.parse(tokens).map_err(|e| vec![e])?;
 
                 parsed_program
@@ -62,7 +62,7 @@ pub fn parse(source: &str) -> Result<Program<'_>, Vec<ParseError<'_>>> {
                     .insert(ident.inner(), Decl::Const { ident, rhs: expr });
             }
             UnparsedDecl::Fn { ident, args, body } => {
-                let body_tokens = lexer.scan(body.byte_offset(), body.data());
+                let body_tokens = lexer.scan(body.span.start, body.inner);
                 let body_parsed = parser.parse(body_tokens).map_err(|e| vec![e])?;
                 let fn_parsed = Decl::Fn {
                     ident: ident.clone(),
@@ -71,11 +71,11 @@ pub fn parse(source: &str) -> Result<Program<'_>, Vec<ParseError<'_>>> {
                     body: body_parsed,
                 };
 
-                if let Some(prev) = parsed_program.declarations.insert(ident.inner(), fn_parsed) {
-                    if let Decl::Fn { body, .. } = prev {
-                        if body != Expr::Lit(Spanned::new(Lit::Null, 0..0)) {
-                            todo!("Multiple definitions for function {}", ident.inner())
-                        }
+                if let Some(Decl::Fn { body, .. }) =
+                    parsed_program.declarations.insert(ident.inner(), fn_parsed)
+                {
+                    if body != Expr::Lit(Spanned::new(Lit::Null, 0..0)) {
+                        todo!("Multiple definitions for function {}", ident.inner())
                     }
                 }
             }

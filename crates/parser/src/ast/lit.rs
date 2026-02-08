@@ -1,4 +1,5 @@
 use nom_span::Spanned;
+use spressions::{Spression, ToSpression};
 
 use super::{expr::EvalError, Ident};
 
@@ -92,6 +93,26 @@ impl<'source> TryFrom<Lit<'source>> for bool {
             Ok(b)
         } else {
             Err(EvalError::ExpectedBool(value))
+        }
+    }
+}
+
+impl<'a> ToSpression for Lit<'a> {
+    fn to_spression(self) -> Spression {
+        let (node, data) = match self {
+            Lit::Null => ("Null", "null".to_string()),
+            Lit::Bool(b) => ("Bool", b.to_string()),
+            Lit::Int(i) => ("Int", i.to_string()),
+            Lit::Ident(ident) => {
+                return ident.to_spression();
+            }
+        };
+
+        Spression {
+            node: node.to_string(),
+            span: None,
+            data: vec![data],
+            children: Vec::new(),
         }
     }
 }

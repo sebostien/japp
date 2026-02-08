@@ -8,7 +8,7 @@ use nom::{InputTakeAtPosition, Parser};
 use std::cell::RefCell;
 
 use crate::ast::{Associativity, Type, UnparsedProgram};
-use crate::{ErrorKind, Fixity, Ident, Lit, ParseError, UnparsedDecl};
+use crate::{ErrorKind, Fixity, Ident, ParseError, UnparsedDecl};
 use japp_util::Spanned;
 
 impl<'a> nom::error::ParseError<Source<'a>> for ParseError<'_> {
@@ -34,6 +34,13 @@ impl<'a> nom::error::ParseError<Source<'a>> for ParseError<'_> {
 
 type Source<'a> = nom_span::Spanned<&'a str>;
 type IResult<'a, O> = nom::IResult<Source<'a>, O, ParseError<'a>>;
+
+fn convert_nom_span(span: nom_span::Spanned<&str>) -> Spanned<&str> {
+    Spanned::new(
+        span.data(),
+        span.byte_offset()..span.byte_offset() + span.len(),
+    )
+}
 
 pub fn convert_nom_error<O>(value: nom::IResult<Source, O>) -> IResult<O>
 where
@@ -95,22 +102,6 @@ fn ident(input: Source) -> IResult<Ident> {
         }))
     } else {
         Ok((input, ident))
-    }
-}
-
-fn lit(input: Source) -> IResult<Spanned<Lit>> {
-    match ident(input) {
-        Ok((input, ident)) => Ok((
-            input,
-            Spanned {
-                span: ident.outer_span(),
-                inner: Lit::from(ident),
-            },
-        )),
-        Err(e) => {
-            // TODO: Attach some context
-            Err(e)
-        }
     }
 }
 
@@ -188,7 +179,13 @@ fn const_decl(input: Source) -> IResult<UnparsedDecl> {
     let input = spaces(input);
     let (input, _) = tag(";")(input)?;
 
-    Ok((input, UnparsedDecl::Const { ident, rhs: expr }))
+    Ok((
+        input,
+        UnparsedDecl::Const {
+            ident,
+            rhs: convert_nom_span(expr),
+        },
+    ))
 }
 
 fn ty(input: Source) -> IResult<Spanned<Type>> {
@@ -268,9 +265,9 @@ fn fn_decl(input: Source) -> IResult<UnparsedDecl> {
     let (input, _) = space1(input)?;
 
     let (input, name) = ident(input)?;
-    let args_start = input.byte_offset();
+    let _args_start = input.byte_offset();
     let (input, args) = many0(ident)(input)?;
-    let args_end = input.byte_offset();
+    let _args_end = input.byte_offset();
     let (input, _) = tag("=")(input)?;
 
     let (input, body) = unparsed_expr(input)?;
@@ -282,7 +279,7 @@ fn fn_decl(input: Source) -> IResult<UnparsedDecl> {
         UnparsedDecl::Fn {
             ident: name,
             args,
-            body,
+            body: convert_nom_span(body),
         },
     ))
 }
